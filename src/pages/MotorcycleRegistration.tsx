@@ -41,10 +41,11 @@ const MotorcycleRegistration = () => {
               <div className="bg-blue-50 p-4 rounded-lg">
                 <h3 className="font-semibold text-blue-900 mb-2">ข้อมูลที่ต้องเตรียม:</h3>
                 <ul className="text-blue-800 space-y-1">
-                  <li>• เลขประจำตัวประชาชน</li>
-                  <li>• ข้อมูลรถจักรยานยนต์ (ยี่ห้อ, รุ่น, เลขเครื่อง, เลขถัง)</li>
-                  <li>• ที่อยู่ปัจจุบัน</li>
-                  <li>• หมายเลขโทรศัพท์</li>
+                  <li>• ชื่อ-สกุล</li>
+                  <li>• ชั้น</li>
+                  <li>• ข้อมูลรถจักรยานยนต์ (ยี่ห้อ, รุ่น, สี, ทะเบียน)</li>
+                  <li>• รูปถ่ายคู่กับรถด้านหน้า</li>
+                  <li>• รูปถ่ายคู่กับทะเบียนรถ</li>
                 </ul>
               </div>
               <Button 
