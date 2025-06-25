@@ -12,7 +12,7 @@ const AppFooter = () => {
           {/* Section 1: Copyright and Project Info */}
           <div className="mb-4 md:mb-0 text-center md:text-left">
             <p className="text-lg font-semibold text-primary mb-1">
-              ระบบค้นหาทะเบียนรถจักรยานยนต์
+              ระบบสืบค้นทะเบียนรถจักรยานยนต์
             </p>
             <p className="text-muted-foreground">
               &copy; {currentYear} All rights reserved.

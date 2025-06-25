@@ -33,7 +33,7 @@ const Index = () => {
         {/* ส่วนของโลโก้โรงเรียน - ยังคงเป็น placeholder คุณต้องเปลี่ยน path เอง */}
         <div className="mb-8">
           <img
-            src="public/ASW.png" // <<<--- สำคัญ: เปลี่ยน path นี้เป็น path จริงของโลโก้โรงเรียนของคุณ
+            src="https://img2.pic.in.th/pic/ASW.png" // <<<--- สำคัญ: เปลี่ยน path นี้เป็น path จริงของโลโก้โรงเรียนของคุณ
             alt="School Logo"
             className="mx-auto h-28 w-auto object-contain" // ปรับขนาดให้ใหญ่ขึ้นเล็กน้อย
           />
