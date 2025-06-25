@@ -23,7 +23,8 @@ export const SuperAdminSetup = () => {
 
     setLoading(true);
     try {
-      const { error } = await supabase.rpc('set_first_super_admin', {
+      // เรียกใช้ function โดยตรงผ่าน SQL
+      const { error } = await supabase.rpc('set_first_super_admin' as any, {
         user_email: user.email
       });
 

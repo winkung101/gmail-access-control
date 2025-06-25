@@ -51,6 +51,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      promote_to_super_admin: {
+        Args: { user_email: string; current_admin_id: string }
+        Returns: undefined
+      }
+      set_first_super_admin: {
+        Args: { user_email: string }
+        Returns: undefined
+      }
     }
     Enums: {
       user_role: "super_admin" | "user"
