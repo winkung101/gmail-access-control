@@ -2,6 +2,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SuperAdminSetup } from '@/components/SuperAdminSetup';
 import { useNavigate } from 'react-router-dom';
 
 const Home = () => {
@@ -12,6 +13,9 @@ const Home = () => {
     await signOut();
     navigate('/auth');
   };
+
+  // แสดง SuperAdminSetup ถ้ายังไม่มี super admin role และไม่มี super admin คนอื่นในระบบ
+  const showSuperAdminSetup = profile && profile.role !== 'super_admin';
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -52,6 +56,10 @@ const Home = () => {
                 </Button>
               </CardContent>
             </Card>
+          )}
+
+          {showSuperAdminSetup && (
+            <SuperAdminSetup />
           )}
 
           <Card>
