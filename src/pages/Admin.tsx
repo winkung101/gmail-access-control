@@ -1,4 +1,4 @@
-
+// /workspaces/gmail-access-control/src/pages/Admin.tsx
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { useNavigate } from 'react-router-dom';
-import { Trash2, Edit, Plus, ArrowLeft } from 'lucide-react';
+import { Trash2, Edit, Plus, ArrowLeft, Settings2 } from 'lucide-react'; // Added Settings2 icon
+import { Switch } from '@/components/ui/switch'; // Import Switch component
+import { useAppSettings } from '@/hooks/useAppSettings'; // Import the new hook
 
 const Admin = () => {
   const { profile, signOut } = useAuth();
@@ -19,6 +21,9 @@ const Admin = () => {
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Use the new app settings hook
+  const { registrationEnabled, setRegistrationEnabled, loading: settingsLoading } = useAppSettings();
 
   // Redirect if not super admin
   useEffect(() => {
@@ -118,7 +123,16 @@ const Admin = () => {
     navigate('/auth');
   };
 
-  if (loading) {
+  // Handle registration toggle change
+  const handleRegistrationToggle = (checked: boolean) => {
+    setRegistrationEnabled(checked);
+    toast({
+      title: "สถานะการสมัครสมาชิก",
+      description: `การสมัครสมาชิกถูก ${checked ? 'เปิดใช้งาน' : 'ปิดใช้งาน'} แล้ว.`,
+    });
+  };
+
+  if (loading || settingsLoading) { // Also wait for settings to load
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -147,6 +161,34 @@ const Admin = () => {
             ออกจากระบบ
           </Button>
         </div>
+
+        {/* New Card for App Settings (Registration Toggle) */}
+        {profile?.role === 'super_admin' && ( // Only super_admin can see this
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Settings2 className="h-5 w-5 mr-2" />
+                ตั้งค่าระบบ
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between space-x-2">
+                <Label htmlFor="registration-toggle" className="flex flex-col space-y-1">
+                  <span>เปิด/ปิด การสมัครสมาชิกใหม่</span>
+                  <span className="font-normal leading-snug text-muted-foreground">
+                    ผู้ใช้ใหม่สามารถสมัครสมาชิกได้หรือไม่
+                  </span>
+                </Label>
+                <Switch
+                  id="registration-toggle"
+                  checked={registrationEnabled}
+                  onCheckedChange={handleRegistrationToggle}
+                  disabled={settingsLoading}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
@@ -179,9 +221,11 @@ const Admin = () => {
                         <span className={`px-2 py-1 rounded-full text-xs ${
                           user.role === 'super_admin' 
                             ? 'bg-red-100 text-red-800' 
-                            : 'bg-blue-100 text-blue-800'
+                            : user.role === 'ฝ่ายปกครอง'
+                              ? 'bg-purple-100 text-purple-800' // New role color
+                              : 'bg-blue-100 text-blue-800'
                         }`}>
-                          {user.role === 'super_admin' ? 'ผู้ดูแลระบบ' : 'ผู้ใช้ทั่วไป'}
+                          {user.role === 'super_admin' ? 'ผู้ดูแลระบบ' : user.role === 'ฝ่ายปกครอง' ? 'ฝ่ายปกครอง' : 'ผู้ใช้ทั่วไป'}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -250,6 +294,7 @@ const Admin = () => {
                                     >
                                       <option value="user">ผู้ใช้ทั่วไป</option>
                                       <option value="super_admin">ผู้ดูแลระบบ</option>
+                                      <option value="ฝ่ายปกครอง">ฝ่ายปกครอง</option> {/* Added new role */}
                                     </select>
                                   </div>
                                   <div>

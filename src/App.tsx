@@ -1,4 +1,4 @@
-
+// src/App.tsx
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -13,6 +13,7 @@ import Admin from "./pages/Admin";
 import MotorcycleRegistration from "./pages/MotorcycleRegistration";
 import MotorcycleSearch from "./pages/MotorcycleSearch";
 import NotFound from "./pages/NotFound";
+import AppFooter from "./components/AppFooter"; // เพิ่ม: นำเข้า AppFooter
 
 const queryClient = new QueryClient();
 
@@ -23,50 +24,55 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route 
-              path="/auth" 
-              element={
-                <ProtectedRoute requireAuth={false}>
-                  <Auth />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/home" 
-              element={
-                <ProtectedRoute>
-                  <Home />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/admin" 
-              element={
-                <ProtectedRoute>
-                  <Admin />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/motorcycle-registration" 
-              element={
-                <ProtectedRoute>
-                  <MotorcycleRegistration />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/motorcycle-search" 
-              element={
-                <ProtectedRoute>
-                  <MotorcycleSearch />
-                </ProtectedRoute>
-              } 
-            />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <div className="flex flex-col min-h-screen"> {/* เพิ่ม flex-col และ min-h-screen */}
+            <main className="flex-grow"> {/* เพิ่ม main และ flex-grow เพื่อให้ content ขยายเต็มที่และดัน footer ลงไป */}
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route
+                  path="/auth"
+                  element={
+                    <ProtectedRoute requireAuth={false}>
+                      <Auth />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/home"
+                  element={
+                    <ProtectedRoute>
+                      <Home />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute>
+                      <Admin />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/motorcycle-registration"
+                  element={
+                    <ProtectedRoute>
+                      <MotorcycleRegistration />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/motorcycle-search"
+                  element={
+                    <ProtectedRoute>
+                      <MotorcycleSearch />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </main>
+            <AppFooter /> {/* เพิ่ม AppFooter ที่นี่ */}
+          </div>
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

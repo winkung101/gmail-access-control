@@ -1,4 +1,4 @@
-
+// src/components/SimpleCaptcha.tsx
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,9 +6,10 @@ import { RefreshCw } from 'lucide-react';
 
 interface SimpleCaptchaProps {
   onVerify: (isValid: boolean) => void;
+  disabled?: boolean; // Add disabled prop
 }
 
-export const SimpleCaptcha = ({ onVerify }: SimpleCaptchaProps) => {
+export const SimpleCaptcha = ({ onVerify, disabled = false }: SimpleCaptchaProps) => {
   const [captchaCode, setCaptchaCode] = useState('');
   const [userInput, setUserInput] = useState('');
   const [isVerified, setIsVerified] = useState(false);
@@ -32,14 +33,17 @@ export const SimpleCaptcha = ({ onVerify }: SimpleCaptchaProps) => {
   };
 
   useEffect(() => {
-    generateCaptcha();
-  }, []);
+    // Only generate captcha if not disabled
+    if (!disabled) {
+      generateCaptcha();
+    }
+  }, [disabled]); // Re-generate if disabled status changes
 
   useEffect(() => {
-    if (userInput.length === 6) {
+    if (userInput.length === 6 && !disabled) { // Only verify if not disabled
       verifyCaptcha();
     }
-  }, [userInput]);
+  }, [userInput, disabled]);
 
   return (
     <div className="space-y-4">
@@ -52,6 +56,7 @@ export const SimpleCaptcha = ({ onVerify }: SimpleCaptchaProps) => {
           variant="outline"
           size="icon"
           onClick={generateCaptcha}
+          disabled={disabled} // Disable the refresh button
         >
           <RefreshCw className="h-4 w-4" />
         </Button>
@@ -63,13 +68,14 @@ export const SimpleCaptcha = ({ onVerify }: SimpleCaptchaProps) => {
           value={userInput}
           onChange={(e) => setUserInput(e.target.value.slice(0, 6))}
           className={`${
-            isVerified ? 'border-green-500' : userInput.length === 6 ? 'border-red-500' : ''
+            isVerified ? 'border-green-500' : userInput.length === 6 && !isVerified ? 'border-red-500' : ''
           }`}
+          disabled={disabled} // Disable the input field
         />
         {isVerified && (
           <p className="text-sm text-green-600 mt-1">✓ ยืนยัน Captcha สำเร็จ</p>
         )}
-        {userInput.length === 6 && !isVerified && (
+        {userInput.length === 6 && !isVerified && !disabled && ( // Only show error if not disabled
           <p className="text-sm text-red-600 mt-1">✗ รหัส Captcha ไม่ถูกต้อง</p>
         )}
       </div>

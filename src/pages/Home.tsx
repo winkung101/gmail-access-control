@@ -1,4 +1,4 @@
-
+// src/pages/Home.tsx
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { FileText, Search, Settings } from 'lucide-react';
 
 const Home = () => {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, loading: authLoading, superAdminExists } = useAuth(); // ดึง superAdminExists
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -15,8 +15,21 @@ const Home = () => {
     navigate('/auth');
   };
 
-  // แสดง SuperAdminSetup ถ้ายังไม่มี super admin role และไม่มี super admin คนอื่นในระบบ
-  const showSuperAdminSetup = profile && profile.role !== 'super_admin';
+  // แสดง SuperAdminSetup ถ้ายังไม่มี super admin role
+  // และยังไม่มี super admin คนอื่นในระบบ (ตรวจสอบจาก superAdminExists)
+  const showSuperAdminSetup = profile && profile.role !== 'super_admin' && !superAdminExists;
+
+  // เพิ่ม loading state สำหรับ auth เพื่อป้องกันการแสดงผลผิดพลาดชั่วคราว
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4">กำลังโหลดข้อมูลผู้ใช้...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -37,7 +50,7 @@ const Home = () => {
               <div className="space-y-2">
                 <p><strong>ชื่อ:</strong> {profile?.full_name}</p>
                 <p><strong>อีเมล:</strong> {user?.email}</p>
-                <p><strong>บทบาท:</strong> {profile?.role === 'super_admin' ? 'ผู้ดูแลระบบ' : 'ผู้ใช้ทั่วไป'}</p>
+                <p><strong>บทบาท:</strong> {profile?.role === 'super_admin' ? 'ผู้ดูแลระบบ' : profile?.role === 'ฝ่ายปกครอง' ? 'ฝ่ายปกครอง' : 'ผู้ใช้ทั่วไป'}</p>
                 <p><strong>สถานะ:</strong> {profile?.is_active ? 'ใช้งาน' : 'ไม่ใช้งาน'}</p>
               </div>
             </CardContent>
@@ -106,6 +119,7 @@ const Home = () => {
             </Card>
           )}
 
+          {/* ซ่อน SuperAdminSetup ถ้ามี super admin อยู่แล้ว */}
           {showSuperAdminSetup && (
             <SuperAdminSetup />
           )}

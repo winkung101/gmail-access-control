@@ -1,3 +1,4 @@
+// src/integrations/supabase/types.ts
 export type Json =
   | string
   | number
@@ -39,6 +40,30 @@ export type Database = {
         }
         Relationships: []
       }
+      app_settings: {
+        Row: {
+          id: number
+          setting_name: string
+          setting_value: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          setting_name: string
+          setting_value?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          setting_name?: string
+          setting_value?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -59,9 +84,14 @@ export type Database = {
         Args: { user_email: string }
         Returns: undefined
       }
+      // เพิ่มส่วนนี้เพื่อเพิ่มฟังก์ชัน has_any_super_admin_exists
+      has_any_super_admin_exists: {
+        Args: {}; // ฟังก์ชันนี้ไม่มี arguments
+        Returns: boolean;
+      }
     }
     Enums: {
-      user_role: "super_admin" | "user"
+      user_role: "super_admin" | "user" | "ฝ่ายปกครอง"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -177,7 +207,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      user_role: ["super_admin", "user"],
+      user_role: ["super_admin", "user", "ฝ่ายปกครอง"],
     },
   },
 } as const

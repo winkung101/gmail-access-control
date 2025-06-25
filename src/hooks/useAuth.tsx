@@ -1,4 +1,4 @@
-
+// src/hooks/useAuth.tsx
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,6 +9,7 @@ interface AuthContextType {
   session: Session | null;
   profile: any;
   loading: boolean;
+  superAdminExists: boolean; // เพิ่ม: สถานะว่ามี super admin อยู่แล้วหรือไม่
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -30,6 +31,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [superAdminExists, setSuperAdminExists] = useState(false); // Initial state
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -47,10 +49,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // ฟังก์ชันใหม่เพื่อตรวจสอบว่ามี super admin อยู่แล้วหรือไม่
+  const checkSuperAdminExists = async () => {
+    try {
+      const { data, error } = await supabase.rpc('has_any_super_admin_exists');
+      if (error) throw error;
+      setSuperAdminExists(data);
+    } catch (error) {
+      console.error('Error checking super admin existence:', error);
+      setSuperAdminExists(false); // Default to false on error
+    }
+  };
+
   const refreshProfile = async () => {
     if (user) {
       await fetchProfile(user.id);
     }
+    // ควรเรียก checkSuperAdminExists ด้วยเมื่อมีการ refresh profile
+    await checkSuperAdminExists();
   };
 
   useEffect(() => {
@@ -61,6 +77,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(session?.user ?? null);
         
         if (session?.user) {
+          // ใช้ setTimeout เพื่อให้แน่ใจว่า Supabase RLS มีเวลาอัปเดต context
           setTimeout(() => {
             fetchProfile(session.user.id);
           }, 0);
@@ -68,21 +85,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setProfile(null);
         }
         setLoading(false);
+        // เรียก checkSuperAdminExists เมื่อสถานะ Auth เปลี่ยนแปลง
+        checkSuperAdminExists();
       }
     );
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Get initial session and check super admin existence
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id);
+        await fetchProfile(session.user.id);
       }
       setLoading(false);
+      // เรียก checkSuperAdminExists ในการโหลดครั้งแรกด้วย
+      await checkSuperAdminExists();
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, []); // Empty dependency array means this runs once on mount
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
@@ -113,6 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     setSession(null);
     setProfile(null);
+    setSuperAdminExists(false); // Reset when signed out
   };
 
   const value = {
@@ -120,6 +142,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     session,
     profile,
     loading,
+    superAdminExists, // เพิ่ม: ส่ง superAdminExists ผ่าน context
     signIn,
     signUp,
     signOut,
