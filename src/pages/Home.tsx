@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SuperAdminSetup } from '@/components/SuperAdminSetup';
 import { useNavigate } from 'react-router-dom';
+import { FileText, Search, Settings } from 'lucide-react';
 
 const Home = () => {
   const { user, profile, signOut } = useAuth();
@@ -42,16 +43,63 @@ const Home = () => {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <FileText className="h-5 w-5 mr-2" />
+                ลงทะเบียนรถจักรยานยนต์
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600 mb-4">
+                ลงทะเบียนรถจักรยานยนต์ใหม่ผ่านแบบฟอร์มออนไลน์
+              </p>
+              <Button 
+                onClick={() => navigate('/motorcycle-registration')}
+                className="w-full"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                ลงทะเบียนรถจักรยานยนต์
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Search className="h-5 w-5 mr-2" />
+                ระบบสืบค้นทะเบียน
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600 mb-4">
+                ค้นหาข้อมูลทะเบียนรถจักรยานยนต์ในระบบ
+              </p>
+              <Button 
+                onClick={() => navigate('/motorcycle-search')}
+                className="w-full"
+                variant="outline"
+              >
+                <Search className="h-4 w-4 mr-2" />
+                ค้นหาทะเบียน
+              </Button>
+            </CardContent>
+          </Card>
+
           {profile?.role === 'super_admin' && (
             <Card>
               <CardHeader>
-                <CardTitle>เมนูผู้ดูแลระบบ</CardTitle>
+                <CardTitle className="flex items-center">
+                  <Settings className="h-5 w-5 mr-2" />
+                  เมนูผู้ดูแลระบบ
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <Button 
                   onClick={() => navigate('/admin')}
                   className="w-full"
                 >
+                  <Settings className="h-4 w-4 mr-2" />
                   จัดการผู้ใช้
                 </Button>
               </CardContent>

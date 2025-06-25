@@ -10,6 +10,8 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Home from "./pages/Home";
 import Admin from "./pages/Admin";
+import MotorcycleRegistration from "./pages/MotorcycleRegistration";
+import MotorcycleSearch from "./pages/MotorcycleSearch";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,6 +46,22 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Admin />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/motorcycle-registration" 
+              element={
+                <ProtectedRoute>
+                  <MotorcycleRegistration />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/motorcycle-search" 
+              element={
+                <ProtectedRoute>
+                  <MotorcycleSearch />
                 </ProtectedRoute>
               } 
             />
