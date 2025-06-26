@@ -103,7 +103,10 @@ export const SignUpForm = () => {
             <Alert variant="destructive" className="mb-4">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>ปิดการสมัครสมาชิก</AlertTitle>
-                <AlertDescription>ขณะนี้ระบบปิดการสมัครสมาชิกใหม่ชั่วคราว กรุณาติดต่อผู้ดูแลระบบ</AlertDescription>
+                <AlertDescription>ขณะนี้ระบบปิดการสมัครสมาชิกใหม่ชั่วคราว. <br />
+                น้องสภาใหม่ที่จะลงทะเบียน นัดวันเวลาที่จะลงทะเบียนมา. <br />
+                พี่จะทำการเปิดระบบให้ลงทะเบียนครับ ID LINE: weerawat1121
+                 </AlertDescription>
             </Alert>
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
