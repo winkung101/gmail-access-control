@@ -26,6 +26,11 @@ const Home = () => {
   }
 
   const getRoleDisplay = () => {
+    // เงื่อนไขพิเศษตามอีเมลที่ระบุ
+    if (user?.email === 'student_68@atsamat.ac.th') return 'สภานักเรียน';
+    if (user?.email === 'sad@atsamat.ac.th') return 'ฝ่ายกิจการนักเรียน';
+
+    // เงื่อนไขเดิมตาม Role ในระบบ Database (Supabase)
     if (hasRole('super_admin')) return 'ผู้ดูแลระบบ';
     if (hasRole('admin')) return 'แอดมิน';
     return 'ผู้ใช้ทั่วไป';
