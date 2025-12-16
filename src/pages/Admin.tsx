@@ -1,4 +1,4 @@
-// /workspaces/gmail-access-control/src/pages/Admin.tsx
+// src/pages/Admin.tsx
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -10,37 +10,61 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { useNavigate } from 'react-router-dom';
-import { Trash2, Edit, Plus, ArrowLeft, Settings2 } from 'lucide-react'; // Added Settings2 icon
-import { Switch } from '@/components/ui/switch'; // Import Switch component
-import { useAppSettings } from '@/hooks/useAppSettings'; // Import the new hook
+import { Trash2, Edit, ArrowLeft, Settings2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { useAppSettings } from '@/hooks/useAppSettings';
+
+interface UserWithRole {
+  id: string;
+  user_id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  roles: string[];
+}
 
 const Admin = () => {
-  const { profile, signOut } = useAuth();
+  const { signOut, hasRole } = useAuth();
   const navigate = useNavigate();
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editingUser, setEditingUser] = useState<UserWithRole | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // Use the new app settings hook
   const { registrationEnabled, setRegistrationEnabled, loading: settingsLoading } = useAppSettings();
 
-  // Redirect if not super admin
   useEffect(() => {
-    if (profile && profile.role !== 'super_admin') {
+    if (!hasRole('super_admin')) {
       navigate('/home');
     }
-  }, [profile, navigate]);
+  }, [hasRole, navigate]);
 
   const fetchUsers = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch profiles
+      const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
-      setUsers(data || []);
+      if (profilesError) throw profilesError;
+
+      // Fetch all user roles
+      const { data: allRoles, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id, role');
+      
+      if (rolesError) throw rolesError;
+
+      // Combine profiles with roles
+      const usersWithRoles = (profiles || []).map(profile => ({
+        ...profile,
+        roles: (allRoles || [])
+          .filter(r => r.user_id === profile.user_id)
+          .map(r => r.role)
+      }));
+
+      setUsers(usersWithRoles);
     } catch (error) {
       console.error('Error fetching users:', error);
       toast({
@@ -63,7 +87,7 @@ const Admin = () => {
         const { error } = await supabase
           .from('profiles')
           .delete()
-          .eq('id', userId);
+          .eq('user_id', userId);
         
         if (error) throw error;
         
@@ -88,17 +112,32 @@ const Admin = () => {
     if (!editingUser) return;
 
     try {
-      const { error } = await supabase
+      // Update profile
+      const { error: profileError } = await supabase
         .from('profiles')
         .update({
           full_name: editingUser.full_name,
-          email: editingUser.email,
-          role: editingUser.role,
-          is_active: editingUser.is_active,
         })
-        .eq('id', editingUser.id);
+        .eq('user_id', editingUser.user_id);
       
-      if (error) throw error;
+      if (profileError) throw profileError;
+
+      // Update role - first delete existing roles, then insert new one
+      await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', editingUser.user_id);
+
+      if (editingUser.roles.length > 0) {
+        const { error: roleError } = await (supabase as any)
+          .from('user_roles')
+          .insert({
+            user_id: editingUser.user_id,
+            role: editingUser.roles[0]
+          });
+        
+        if (roleError) throw roleError;
+      }
       
       toast({
         title: "สำเร็จ",
@@ -123,16 +162,23 @@ const Admin = () => {
     navigate('/auth');
   };
 
-  // Handle registration toggle change
   const handleRegistrationToggle = (checked: boolean) => {
     setRegistrationEnabled(checked);
-    toast({
-      title: "สถานะการสมัครสมาชิก",
-      description: `การสมัครสมาชิกถูก ${checked ? 'เปิดใช้งาน' : 'ปิดใช้งาน'} แล้ว.`,
-    });
   };
 
-  if (loading || settingsLoading) { // Also wait for settings to load
+  const getRoleDisplay = (roles: string[]) => {
+    if (roles.includes('super_admin')) return 'ผู้ดูแลระบบ';
+    if (roles.includes('admin')) return 'แอดมิน';
+    return 'ผู้ใช้ทั่วไป';
+  };
+
+  const getRoleColor = (roles: string[]) => {
+    if (roles.includes('super_admin')) return 'bg-red-100 text-red-800';
+    if (roles.includes('admin')) return 'bg-purple-100 text-purple-800';
+    return 'bg-blue-100 text-blue-800';
+  };
+
+  if (loading || settingsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -148,10 +194,7 @@ const Admin = () => {
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center space-x-4">
-            <Button
-              variant="outline"
-              onClick={() => navigate('/home')}
-            >
+            <Button variant="outline" onClick={() => navigate('/home')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               กลับหน้าหลัก
             </Button>
@@ -162,33 +205,30 @@ const Admin = () => {
           </Button>
         </div>
 
-        {/* New Card for App Settings (Registration Toggle) */}
-        {profile?.role === 'super_admin' && ( // Only super_admin can see this
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Settings2 className="h-5 w-5 mr-2" />
-                ตั้งค่าระบบ
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between space-x-2">
-                <Label htmlFor="registration-toggle" className="flex flex-col space-y-1">
-                  <span>เปิด/ปิด การสมัครสมาชิกใหม่</span>
-                  <span className="font-normal leading-snug text-muted-foreground">
-                    ผู้ใช้ใหม่สามารถสมัครสมาชิกได้หรือไม่
-                  </span>
-                </Label>
-                <Switch
-                  id="registration-toggle"
-                  checked={registrationEnabled}
-                  onCheckedChange={handleRegistrationToggle}
-                  disabled={settingsLoading}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Settings2 className="h-5 w-5 mr-2" />
+              ตั้งค่าระบบ
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between space-x-2">
+              <Label htmlFor="registration-toggle" className="flex flex-col space-y-1">
+                <span>เปิด/ปิด การสมัครสมาชิกใหม่</span>
+                <span className="font-normal leading-snug text-muted-foreground">
+                  ผู้ใช้ใหม่สามารถสมัครสมาชิกได้หรือไม่
+                </span>
+              </Label>
+              <Switch
+                id="registration-toggle"
+                checked={registrationEnabled}
+                onCheckedChange={handleRegistrationToggle}
+                disabled={settingsLoading}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
@@ -205,9 +245,7 @@ const Admin = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>ชื่อ-นามสกุล</TableHead>
-                    <TableHead>อีเมล</TableHead>
                     <TableHead>บทบาท</TableHead>
-                    <TableHead>สถานะ</TableHead>
                     <TableHead>วันที่สมัคร</TableHead>
                     <TableHead>จัดการ</TableHead>
                   </TableRow>
@@ -215,26 +253,10 @@ const Admin = () => {
                 <TableBody>
                   {users.map((user) => (
                     <TableRow key={user.id}>
-                      <TableCell>{user.full_name}</TableCell>
-                      <TableCell>{user.email}</TableCell>
+                      <TableCell>{user.full_name || '-'}</TableCell>
                       <TableCell>
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          user.role === 'super_admin' 
-                            ? 'bg-red-100 text-red-800' 
-                            : user.role === 'ฝ่ายปกครอง'
-                              ? 'bg-purple-100 text-purple-800' // New role color
-                              : 'bg-blue-100 text-blue-800'
-                        }`}>
-                          {user.role === 'super_admin' ? 'ผู้ดูแลระบบ' : user.role === 'ฝ่ายปกครอง' ? 'ฝ่ายปกครอง' : 'ผู้ใช้ทั่วไป'}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          user.is_active 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {user.is_active ? 'ใช้งาน' : 'ไม่ใช้งาน'}
+                        <span className={`px-2 py-1 rounded-full text-xs ${getRoleColor(user.roles)}`}>
+                          {getRoleDisplay(user.roles)}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -262,7 +284,7 @@ const Admin = () => {
                                     <Label htmlFor="fullName">ชื่อ-นามสกุล</Label>
                                     <Input
                                       id="fullName"
-                                      value={editingUser.full_name}
+                                      value={editingUser.full_name || ''}
                                       onChange={(e) => setEditingUser({
                                         ...editingUser,
                                         full_name: e.target.value
@@ -270,46 +292,19 @@ const Admin = () => {
                                     />
                                   </div>
                                   <div>
-                                    <Label htmlFor="email">อีเมล</Label>
-                                    <Input
-                                      id="email"
-                                      type="email"
-                                      value={editingUser.email}
-                                      onChange={(e) => setEditingUser({
-                                        ...editingUser,
-                                        email: e.target.value
-                                      })}
-                                    />
-                                  </div>
-                                  <div>
                                     <Label htmlFor="role">บทบาท</Label>
                                     <select
                                       id="role"
-                                      value={editingUser.role}
+                                      value={editingUser.roles[0] || 'user'}
                                       onChange={(e) => setEditingUser({
                                         ...editingUser,
-                                        role: e.target.value
+                                        roles: [e.target.value]
                                       })}
                                       className="w-full p-2 border rounded-md"
                                     >
                                       <option value="user">ผู้ใช้ทั่วไป</option>
+                                      <option value="admin">แอดมิน</option>
                                       <option value="super_admin">ผู้ดูแลระบบ</option>
-                                      <option value="ฝ่ายปกครอง">ฝ่ายปกครอง</option> {/* Added new role */}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <Label htmlFor="isActive">สถานะ</Label>
-                                    <select
-                                      id="isActive"
-                                      value={editingUser.is_active ? 'true' : 'false'}
-                                      onChange={(e) => setEditingUser({
-                                        ...editingUser,
-                                        is_active: e.target.value === 'true'
-                                      })}
-                                      className="w-full p-2 border rounded-md"
-                                    >
-                                      <option value="true">ใช้งาน</option>
-                                      <option value="false">ไม่ใช้งาน</option>
                                     </select>
                                   </div>
                                   <Button type="submit" className="w-full">
@@ -323,7 +318,7 @@ const Admin = () => {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleDeleteUser(user.id)}
+                            onClick={() => handleDeleteUser(user.user_id)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

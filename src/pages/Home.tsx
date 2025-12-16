@@ -2,12 +2,11 @@
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SuperAdminSetup } from '@/components/SuperAdminSetup';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Search, Settings } from 'lucide-react';
 
 const Home = () => {
-  const { user, profile, signOut, loading: authLoading, superAdminExists } = useAuth(); // ดึง superAdminExists
+  const { user, profile, roles, signOut, loading: authLoading, hasRole } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -15,11 +14,6 @@ const Home = () => {
     navigate('/auth');
   };
 
-  // แสดง SuperAdminSetup ถ้ายังไม่มี super admin role
-  // และยังไม่มี super admin คนอื่นในระบบ (ตรวจสอบจาก superAdminExists)
-  const showSuperAdminSetup = profile && profile.role !== 'super_admin' && !superAdminExists;
-
-  // เพิ่ม loading state สำหรับ auth เพื่อป้องกันการแสดงผลผิดพลาดชั่วคราว
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -30,6 +24,12 @@ const Home = () => {
       </div>
     );
   }
+
+  const getRoleDisplay = () => {
+    if (hasRole('super_admin')) return 'ผู้ดูแลระบบ';
+    if (hasRole('admin')) return 'แอดมิน';
+    return 'ผู้ใช้ทั่วไป';
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -48,10 +48,9 @@ const Home = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <p><strong>ชื่อ:</strong> {profile?.full_name}</p>
+                <p><strong>ชื่อ:</strong> {profile?.full_name || '-'}</p>
                 <p><strong>อีเมล:</strong> {user?.email}</p>
-                <p><strong>บทบาท:</strong> {profile?.role === 'super_admin' ? 'ผู้ดูแลระบบ' : profile?.role === 'ฝ่ายปกครอง' ? 'ฝ่ายปกครอง' : 'ผู้ใช้ทั่วไป'}</p>
-                <p><strong>สถานะ:</strong> {profile?.is_active ? 'ใช้งาน' : 'ไม่ใช้งาน'}</p>
+                <p><strong>บทบาท:</strong> {getRoleDisplay()}</p>
               </div>
             </CardContent>
           </Card>
@@ -99,7 +98,7 @@ const Home = () => {
             </CardContent>
           </Card>
 
-          {profile?.role === 'super_admin' && (
+          {hasRole('super_admin') && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -117,11 +116,6 @@ const Home = () => {
                 </Button>
               </CardContent>
             </Card>
-          )}
-
-          {/* ซ่อน SuperAdminSetup ถ้ามี super admin อยู่แล้ว */}
-          {showSuperAdminSetup && (
-            <SuperAdminSetup />
           )}
 
           <Card>

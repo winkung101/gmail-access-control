@@ -1,4 +1,4 @@
-// /workspaces/gmail-access-control/src/pages/MotorcycleSearch.tsx
+// src/pages/MotorcycleSearch.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,9 +7,8 @@ import { Search, ArrowLeft, FileText, Loader2, AlertCircle, Check } from 'lucide
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { useAuth } from '@/hooks/useAuth'; // เพิ่ม: นำเข้า useAuth
+import { useAuth } from '@/hooks/useAuth';
 
-// Helper function to convert Google Drive share link to direct embed link
 const convertGoogleDriveLink = (originalUrl: string): string => {
   const match = originalUrl.match(/\/file\/d\/([^/]+)\//);
   if (match && match[1]) {
@@ -20,8 +19,7 @@ const convertGoogleDriveLink = (originalUrl: string): string => {
 
 const MotorcycleSearch = () => {
   const navigate = useNavigate();
-  // เพิ่ม: ดึงข้อมูลผู้ใช้และ Profile พร้อมสถานะ loading
-  const { user, profile, loading: authLoading } = useAuth(); 
+  const { user, hasRole, loading: authLoading } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -33,6 +31,8 @@ const MotorcycleSearch = () => {
   const GOOGLE_SHEET_ID = '1YqjDZXFLktWvwKg_2hY_kMGAhD69tmy6W4phpSfAMbM';
   const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
   const GOOGLE_SHEET_RANGE = 'DATA!A:I';
+
+  const canAccess = hasRole('super_admin') || hasRole('admin');
 
   const fetchGoogleSheetData = useCallback(async () => {
     if (!GOOGLE_SHEET_ID || !GOOGLE_API_KEY) {
@@ -52,11 +52,11 @@ const MotorcycleSearch = () => {
         } catch {}
 
         if (response.status === 400 && errorDetail.includes("Unable to parse range")) {
-          throw new Error(`Google Sheets API Error (400): ไม่สามารถอ่านข้อมูลได้. โปรดตรวจสอบชื่อชีตและช่วงคอลัมน์ "${GOOGLE_SHEET_RANGE}" ในโค้ด MotorcycleSearch.tsx ว่าถูกต้องตรงกับ Google Sheet ของคุณทุกตัวอักษร. รายละเอียด: ${errorDetail}`);
+          throw new Error(`Google Sheets API Error (400): ไม่สามารถอ่านข้อมูลได้`);
         } else if (response.status === 403) {
-          throw new Error(`Google Sheets API Error (403 Forbidden): การเข้าถึงถูกปฏิเสธ. โปรดตรวจสอบ: 1) Google API Key ถูกจำกัด IP/Referrer หรือไม่ 2) Google Sheet ID: "${GOOGLE_SHEET_ID}" ได้ตั้งค่าการแชร์เป็น "Anyone with the link" (Viewer) หรือยัง`);
+          throw new Error(`Google Sheets API Error (403): การเข้าถึงถูกปฏิเสธ`);
         } else if (response.status === 429) {
-          throw new Error(`Google Sheets API Error (429): โควต้าเกิน. คุณทำการร้องขอมากเกินไป. โปรดรอสักครู่แล้วลองใหม่. หากปัญหายังคงอยู่ ลองพิจารณาเพิ่มโควต้าใน Google Cloud Console`);
+          throw new Error(`Google Sheets API Error (429): โควต้าเกิน`);
         }
 
         throw new Error(`Google Sheets API Error (${response.status}): ${errorDetail}`);
@@ -76,30 +76,14 @@ const MotorcycleSearch = () => {
         rawHeaders.forEach((header: string, index: number) => {
           let key = '';
           switch (header.trim()) {
-            case 'ประทับเวลา':
-              key = 'timestamp';
-              break;
-            case 'ชื่อ - สกุล':
-              key = 'fullName';
-              break;
-            case 'ชั้น (Ex. 1/1)':
-              key = 'classGrade';
-              break;
-            case 'ยี้ห้อ':
-              key = 'brandModel';
-              break;
-            case 'สีของรถ (เช่น สีแดง)':
-              key = 'vehicleColor';
-              break;
-            case 'ทะเบียนรถ ( 1ขข 1234 ร้อยเอ็ด)':
-              key = 'plateNumber';
-              break;
-            case 'รูปถ่ายคู่กับรถด้านหน้า':
-              key = 'frontPhotoUrl';
-              break;
-            case 'รูปถ่ายคู่กับทะเบียนรถ':
-              key = 'licensePlatePhotoUrl';
-              break;
+            case 'ประทับเวลา': key = 'timestamp'; break;
+            case 'ชื่อ - สกุล': key = 'fullName'; break;
+            case 'ชั้น (Ex. 1/1)': key = 'classGrade'; break;
+            case 'ยี้ห้อ': key = 'brandModel'; break;
+            case 'สีของรถ (เช่น สีแดง)': key = 'vehicleColor'; break;
+            case 'ทะเบียนรถ ( 1ขข 1234 ร้อยเอ็ด)': key = 'plateNumber'; break;
+            case 'รูปถ่ายคู่กับรถด้านหน้า': key = 'frontPhotoUrl'; break;
+            case 'รูปถ่ายคู่กับทะเบียนรถ': key = 'licensePlatePhotoUrl'; break;
             default:
               key = header.replace(/\s+/g, '').replace(/[^a-zA-Z0-9]/g, '');
               key = key.charAt(0).toLowerCase() + key.slice(1);
@@ -125,41 +109,36 @@ const MotorcycleSearch = () => {
   }, [GOOGLE_SHEET_ID, GOOGLE_API_KEY, GOOGLE_SHEET_RANGE]);
 
   useEffect(() => {
-    // โหลดข้อมูลเริ่มต้นเมื่อคอมโพเนนต์ mount และเมื่อสถานะการยืนยันตัวตนพร้อม
-    if (!authLoading) { // ตรวจสอบว่า useAuth โหลดเสร็จแล้ว
-        const loadData = async () => {
-            // โหลดข้อมูลก็ต่อเมื่อผู้ใช้มีสิทธิ์และยังไม่มีข้อมูลถูกโหลดสำเร็จ
-            if ((profile?.role === 'super_admin' || profile?.role === 'ฝ่ายปกครอง') && allMotorcyclesData.length === 0 && !initialLoadError) {
-                setIsInitialLoading(true);
-                setInitialLoadError(null);
-                const data = await fetchGoogleSheetData();
-                setAllMotorcyclesData(data);
-                setSearchResults(data); // แสดงข้อมูลทั้งหมดในตอนแรก
-                setIsInitialLoading(false);
-            } else if ((profile?.role === 'super_admin' || profile?.role === 'ฝ่ายปกครอง') && allMotorcyclesData.length > 0 && isInitialLoading) {
-                // ถ้ามีข้อมูลอยู่แล้วแต่ยังเป็น loading ให้ตั้งเป็น false
-                setIsInitialLoading(false);
-            } else if (profile?.role === 'user') { // ถ้าเป็น user ทั่วไป
-                setIsInitialLoading(false);
-                setInitialLoadError("คุณไม่มีสิทธิ์เข้าถึงหน้านี้. เฉพาะผู้ดูแลระบบและฝ่ายปกครองเท่านั้นที่สามารถดูข้อมูลได้.");
-            } else if (!user) { // ถ้าไม่มี user (ยังไม่ได้ล็อกอิน)
-                navigate('/auth'); // นำทางไปหน้า auth
-            }
-        };
-        loadData();
+    if (!authLoading) {
+      const loadData = async () => {
+        if (canAccess && allMotorcyclesData.length === 0 && !initialLoadError) {
+          setIsInitialLoading(true);
+          setInitialLoadError(null);
+          const data = await fetchGoogleSheetData();
+          setAllMotorcyclesData(data);
+          setSearchResults(data);
+          setIsInitialLoading(false);
+        } else if (canAccess && allMotorcyclesData.length > 0 && isInitialLoading) {
+          setIsInitialLoading(false);
+        } else if (!canAccess && user) {
+          setIsInitialLoading(false);
+          setInitialLoadError("คุณไม่มีสิทธิ์เข้าถึงหน้านี้");
+        } else if (!user) {
+          navigate('/auth');
+        }
+      };
+      loadData();
     }
-  }, [authLoading, profile, user, navigate, fetchGoogleSheetData, allMotorcyclesData.length, initialLoadError, isInitialLoading]);
-
+  }, [authLoading, canAccess, user, navigate, fetchGoogleSheetData, allMotorcyclesData.length, initialLoadError, isInitialLoading]);
 
   const handleSearch = async () => {
-    // ป้องกันการค้นหาหากผู้ใช้ไม่มีสิทธิ์
-    if (profile?.role !== 'super_admin' && profile?.role !== 'ฝ่ายปกครอง') {
-        toast({
-            title: "ไม่ได้รับอนุญาต",
-            description: "คุณไม่มีสิทธิ์ค้นหาข้อมูล.",
-            variant: "destructive",
-        });
-        return;
+    if (!canAccess) {
+      toast({
+        title: "ไม่ได้รับอนุญาต",
+        description: "คุณไม่มีสิทธิ์ค้นหาข้อมูล",
+        variant: "destructive",
+      });
+      return;
     }
 
     if (!searchQuery.trim()) {
@@ -211,7 +190,6 @@ const MotorcycleSearch = () => {
     }
   };
 
-  // แสดง Loading State สำหรับ Auth หรือ Access Denied Message
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -223,8 +201,7 @@ const MotorcycleSearch = () => {
     );
   }
 
-  // แสดงข้อความปฏิเสธการเข้าถึงสำหรับผู้ใช้ที่ไม่มีสิทธิ์
-  if (profile?.role !== 'super_admin' && profile?.role !== 'ฝ่ายปกครอง') {
+  if (!canAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8 text-center">
@@ -232,9 +209,8 @@ const MotorcycleSearch = () => {
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>ไม่ได้รับอนุญาต!</AlertTitle>
             <AlertDescription>
-              คุณไม่มีสิทธิ์เข้าถึงหน้านี้. <br />
-              เฉพาะผู้ดูแลระบบและฝ่ายปกครองเท่านั้นที่สามารถดูข้อมูลได้. <br />
-              - ติดต่อแอดมินเพื่อเปลี่ยนสิทธิ์การเข้าถึงข้อมูล -
+              คุณไม่มีสิทธิ์เข้าถึงหน้านี้ <br />
+              เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถดูข้อมูลได้
             </AlertDescription>
           </Alert>
           <Button onClick={() => navigate('/home')}>กลับสู่หน้าหลัก</Button>
