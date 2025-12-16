@@ -49,10 +49,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchProfile = async (userId: string) => {
     try {
+      // ตรวจสอบทั้งคอลัมน์ id หรือ user_id ตามที่คุณตั้งชื่อในตาราง
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', userId)
+        .eq('id', userId) // เปลี่ยนจาก user_id เป็น id
         .maybeSingle();
       
       if (error) throw error;
@@ -64,30 +65,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const fetchRoles = async (userId: string) => {
-  try {
-    // เพิ่มบรรทัดนี้เพื่อเช็คว่า UID ที่ระบบใช้ดึงข้อมูลคืออะไร
-    console.log("Checking roles for UID:", userId); 
+    try {
+      console.log("Fetching roles for UID:", userId);
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId); // ตรวจสอบว่าใน DB ใช้ user_id จริงไหม
+      
+      if (error) throw error;
+      
+      console.log("Raw roles data from DB:", data);
 
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId);
-    
-    if (error) throw error;
-    
-    // เพิ่มบรรทัดนี้เพื่อดูว่าข้อมูลที่ได้จากฐานข้อมูลคืออะไร
-    console.log("Roles data from Supabase:", data); 
-
-    // ปรับการ map ข้อมูลให้รองรับกรณีข้อมูลมาในรูปแบบที่หลากหลาย
-    const fetchedRoles = data?.map((r: any) => r.role) || [];
-    console.log("Mapped roles array:", fetchedRoles);
-    
-    setRoles(fetchedRoles);
-  } catch (error) {
-    console.error('Error fetching roles:', error);
-    setRoles([]);
-  }
-};
+      // แก้ไขการ Map ข้อมูลให้รองรับ Enum หรือ Text
+      const fetchedRoles = data?.map((r: any) => String(r.role)) || [];
+      console.log("Final roles array:", fetchedRoles);
+      
+      setRoles(fetchedRoles);
+    } catch (error) {
+      console.error('Error fetching roles:', error);
+      setRoles([]);
+    }
+  };
 
   const refreshProfile = async () => {
     if (user) {
