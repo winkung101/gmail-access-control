@@ -4,7 +4,6 @@ import { supabase } from '@/integrations/supabase/client';
 
 interface Profile {
   id: string;
-  user_id: string;
   full_name: string | null;
   avatar_url: string | null;
   created_at: string;
@@ -43,33 +42,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const loadUserData = async (currentUser: User) => {
     try {
-      // 1. จัดการเรื่อง Role ก่อนเพื่อความเร็ว
+      // 1. จัดการเรื่อง Role (Hardcode สำหรับคุณ)
       if (currentUser.email === adminEmail) {
-        setRoles(['super_admin']); 
+        setRoles(['super_admin']);
       } else {
-        const { data } = await supabase
+        const { data: rolesData } = await supabase
           .from('user_roles')
           .select('role')
           .eq('user_id', currentUser.id);
-        setRoles(data?.map((r: any) => String(r.role)) || []); 
+        setRoles(rolesData?.map((r: any) => String(r.role)) || []);
       }
 
-      // 2. ดึง Profile
-     const { data: profileData } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId) // เปลี่ยนจาก user_id เป็น id ตาม Error ใน Console
-      .maybeSingle();
+      // 2. ดึง Profile (แก้ไขจาก user_id เป็น id ตาม Database)
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', currentUser.id) // <--- จุดสำคัญที่แก้ไข
+        .maybeSingle();
+      
+      if (profileError) console.error("Profile Error:", profileError);
       setProfile(profileData);
     } catch (error) {
-      console.error('Auth data loading error:', error);
+      console.error('Auth loading error:', error);
     } finally {
-      setLoading(false); // มั่นใจว่ายังไงก็ต้องเลิก Loading 
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    // ดึง Session เริ่มต้น
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       const currentUser = session?.user ?? null;
@@ -81,7 +81,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
-    // ติดตามการเปลี่ยนแปลง Auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const currentUser = session?.user ?? null;
       setSession(session);
@@ -99,8 +98,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const hasRole = (role: string) => {
-    if (user?.email === adminEmail && role === 'super_admin') return true; 
-    return roles.includes(role); 
+    if (user?.email === adminEmail && role === 'super_admin') return true;
+    return roles.includes(role);
   };
 
   const signIn = async (email: string, password: string) => {
@@ -128,7 +127,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AuthContext.Provider value={{ user, session, profile, roles, loading, signIn, signUp, signOut, refreshProfile, hasRole }}>
-      {children} 
+      {children}
     </AuthContext.Provider>
   );
 };
