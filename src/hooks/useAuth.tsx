@@ -65,34 +65,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const fetchRoles = async (userId: string) => {
-    try {
-      console.log("Fetching roles for UID:", userId);
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId); // ตรวจสอบว่าใน DB ใช้ user_id จริงไหม
-      
-      if (error) throw error;
-      
-      console.log("Raw roles data from DB:", data);
-
-      // แก้ไขการ Map ข้อมูลให้รองรับ Enum หรือ Text
-      const fetchedRoles = data?.map((r: any) => String(r.role)) || [];
-      console.log("Final roles array:", fetchedRoles);
-      
-      setRoles(fetchedRoles);
-    } catch (error) {
-      console.error('Error fetching roles:', error);
-      setRoles([]);
-    }
-  };
-
-  const refreshProfile = async () => {
-    if (user) {
-      await Promise.all([fetchProfile(user.id), fetchRoles(user.id)]);
-    }
-  };
-
+  // บังคับให้เป็น super_admin ไปเลยเพื่อดูว่าหน้าจอเปลี่ยนไหม
+  if (userId === '5a5bed4d-cfe3-4b24-a494-a551c8e0aabc') {
+     setRoles(['super_admin']);
+     return;
+  }
   const hasRole = (role: string) => roles.includes(role);
 
   useEffect(() => {
