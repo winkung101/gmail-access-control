@@ -27,6 +27,9 @@ const AppFooter = () => {
             <p className="font-medium-">
               โรงเรียนอาจสามารถวิทยา
             </p>
+             <p className="font-medium-">
+              #ว่าที่นักศึกษาพยาบาลที่สร้างเว็บได้นิดหน่อย
+            </p>
           </div>
 
           {/* Section 3: Contact Info and Social Media */}
