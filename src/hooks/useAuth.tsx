@@ -28,9 +28,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
 
@@ -41,95 +39,69 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [roles, setRoles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
+  const adminEmail = 'winawathns11@gmail.com';
+
+  const loadUserData = async (currentUser: User) => {
     try {
-      const { data, error } = await supabase
+      // 1. จัดการเรื่อง Role ก่อนเพื่อความเร็ว
+      if (currentUser.email === adminEmail) {
+        setRoles(['super_admin']); 
+      } else {
+        const { data } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', currentUser.id);
+        setRoles(data?.map((r: any) => String(r.role)) || []); 
+      }
+
+      // 2. ดึง Profile
+      const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-      
-      if (error) throw error;
-      setProfile(data);
+        .eq('user_id', currentUser.id)
+        .maybeSingle(); 
+      setProfile(profileData);
     } catch (error) {
-      console.error('Error fetching profile:', error);
-      setProfile(null);
+      console.error('Auth data loading error:', error);
+    } finally {
+      setLoading(false); // มั่นใจว่ายังไงก็ต้องเลิก Loading 
     }
-  };
-
-  const fetchRoles = async (userId: string, email?: string) => {
-    // กรณีพิเศษ: บังคับสิทธิ์ให้ winawathns11@gmail.com เป็น super_admin ทันที
-    if (email === 'winawathns11@gmail.com') {
-      setRoles(['super_admin']);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId);
-      
-      if (error) throw error;
-      setRoles(data?.map((r: any) => String(r.role)) || []);
-    } catch (error) {
-      console.error('Error fetching roles:', error);
-      setRoles([]);
-    }
-  };
-
-  const refreshProfile = async () => {
-    if (user) {
-      await Promise.all([fetchProfile(user.id), fetchRoles(user.id, user.email)]);
-    }
-  };
-
-  // แก้ไขฟังก์ชัน hasRole ให้รองรับทั้งจาก State และ Hardcode
-  const hasRole = (role: string) => {
-    if (user?.email === 'winawathns11@gmail.com' && role === 'super_admin') {
-      return true;
-    }
-    return roles.includes(role);
   };
 
   useEffect(() => {
-    // ตรวจสอบ Session เริ่มต้น
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    // ดึง Session เริ่มต้น
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       const currentUser = session?.user ?? null;
       setUser(currentUser);
-      
       if (currentUser) {
-        await Promise.all([
-          fetchProfile(currentUser.id),
-          fetchRoles(currentUser.id, currentUser.email)
-        ]);
-      }
-      setLoading(false);
-    });
-
-    // ติดตามการเปลี่ยนแปลงสถานะล็อกอิน
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, currentSession) => {
-        setSession(currentSession);
-        const currentUser = currentSession?.user ?? null;
-        setUser(currentUser);
-        
-        if (currentUser) {
-          await Promise.all([
-            fetchProfile(currentUser.id),
-            fetchRoles(currentUser.id, currentUser.email)
-          ]);
-        } else {
-          setProfile(null);
-          setRoles([]);
-        }
+        loadUserData(currentUser);
+      } else {
         setLoading(false);
       }
-    );
+    });
+
+    // ติดตามการเปลี่ยนแปลง Auth
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const currentUser = session?.user ?? null;
+      setSession(session);
+      setUser(currentUser);
+      if (currentUser) {
+        loadUserData(currentUser);
+      } else {
+        setProfile(null);
+        setRoles([]);
+        setLoading(false);
+      }
+    });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const hasRole = (role: string) => {
+    if (user?.email === adminEmail && role === 'super_admin') return true; 
+    return roles.includes(role); 
+  };
 
   const signIn = async (email: string, password: string) => {
     return await supabase.auth.signInWithPassword({ email, password });
@@ -137,9 +109,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signUp = async (email: string, password: string, fullName: string) => {
     return await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
+      email, password,
+      options: { data: { full_name: fullName } }
     });
   };
 
@@ -151,22 +122,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setRoles([]);
   };
 
-  const value = {
-    user,
-    session,
-    profile,
-    roles,
-    loading,
-    signIn,
-    signUp,
-    signOut,
-    refreshProfile,
-    hasRole,
+  const refreshProfile = async () => {
+    if (user) await loadUserData(user);
   };
 
   return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
+    <AuthContext.Provider value={{ user, session, profile, roles, loading, signIn, signUp, signOut, refreshProfile, hasRole }}>
+      {children} 
     </AuthContext.Provider>
   );
 };
