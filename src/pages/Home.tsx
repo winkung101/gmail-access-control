@@ -2,7 +2,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Search, Settings, UserPlus, UserMinus, ShieldCheck, Zap } from 'lucide-react'; 
+import { 
+  FileText, Search, Settings, UserPlus, UserMinus, 
+  ShieldCheck, Zap, Server, Database, Globe, Lock 
+} from 'lucide-react'; 
 import { useToast } from '@/components/ui/use-toast';
 
 const Home = () => {
@@ -38,30 +41,39 @@ const Home = () => {
   const isAdminOrUpper = hasRole('admin') || hasRole('super_admin') || user?.email === 'winawathns11@gmail.com';
 
   return (
-    <div className="min-h-screen bg-[#f1f5f9] py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* Header Section */}
-        <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
-          <div className="flex items-center space-x-3">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <Zap className="h-5 w-5 text-white" />
+    <div className="min-h-screen bg-[#f1f5f9] pb-12">
+      {/* 1. Navbar ใหม่พร้อมโลโก้โรงเรียน */}
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16 items-center">
+            <div className="flex items-center space-x-3">
+              {/* ใส่ URL โลโก้โรงเรียนที่นี่ */}
+              <img 
+                src="https://img5.pic.in.th/file/secure-sv1/ASW-Logo-1.png" 
+                alt="School Logo" 
+                className="h-10 w-10 object-contain"
+              />
+              <div className="flex flex-col">
+                <span className="text-lg font-bold text-slate-900 leading-none">ASW-Moto</span>
+                <span className="text-[10px] text-slate-500 font-medium uppercase tracking-tight">ระบบสืบค้นทะเบียนรถจักรยานยนต์</span>
+              </div>
             </div>
-            <h1 className="text-xl font-bold text-slate-800 tracking-tight">ASW-Moto Control</h1>
+            <Button 
+              onClick={handleSignOut} 
+              variant="ghost" 
+              className="text-slate-500 hover:text-red-600 hover:bg-red-50 text-sm"
+            >
+              ออกจากระบบ
+            </Button>
           </div>
-          <Button 
-            onClick={handleSignOut} 
-            variant="ghost" 
-            className="text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all duration-300"
-          >
-            ออกจากระบบ
-          </Button>
         </div>
+      </nav>
 
+      <div className="max-w-4xl mx-auto px-4 pt-8 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          {/* Card: ข้อมูลผู้ใช้ - เน้นความเรียบง่าย สะอาดตา */}
-          <Card className="border-none shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden group">
+          {/* Card: ข้อมูลผู้ใช้ */}
+          <Card className="border-none shadow-sm hover:shadow-md transition-shadow duration-300 group">
             <div className="h-1 bg-slate-200 group-hover:bg-blue-500 transition-colors duration-500" />
             <CardHeader className="pb-2">
               <CardTitle className="text-slate-700 flex items-center text-lg">
@@ -89,127 +101,110 @@ const Home = () => {
             </CardContent>
           </Card>
 
-          {/* Card: ลงทะเบียนรถ - มี Hover Scale เล็กน้อย */}
+          {/* Card: ลงทะเบียนรถ */}
           <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 group">
             <CardHeader>
               <CardTitle className="flex items-center text-slate-700">
-                <FileText className="h-5 w-5 mr-2 text-indigo-500 group-hover:rotate-12 transition-transform" />
+                <FileText className="h-5 w-5 mr-2 text-indigo-500" />
                 ลงทะเบียนรถ
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-slate-500 mb-4 text-sm">
-                บันทึกข้อมูลรถจักรยานยนต์ใหม่เข้าระบบเพื่อขอรับสติ๊กเกอร์ยืนยัน
-              </p>
-              <Button 
-                onClick={() => navigate('/motorcycle-registration')}
-                className="w-full bg-slate-900 hover:bg-blue-600 transition-colors duration-300 shadow-sm"
-              >
-                เข้าสู่หน้าลงทะเบียน
-              </Button>
+              <p className="text-slate-500 mb-4 text-sm">บันทึกข้อมูลรถจักรยานยนต์ใหม่เข้าระบบ</p>
+              <Button onClick={() => navigate('/motorcycle-registration')} className="w-full bg-slate-900 hover:bg-blue-600 shadow-sm">เข้าสู่หน้าลงทะเบียน</Button>
             </CardContent>
           </Card>
 
-          {/* Card: ระบบสืบค้น - ใช้ขอบมนและเส้นประเบาๆ */}
+          {/* Card: ระบบสืบค้น */}
           <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 group">
             <CardHeader>
               <CardTitle className="flex items-center text-slate-700">
-                <Search className="h-5 w-5 mr-2 text-emerald-500 group-hover:scale-110 transition-transform" />
+                <Search className="h-5 w-5 mr-2 text-emerald-500" />
                 สืบค้นทะเบียน
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-slate-500 mb-4 text-sm">
-                ตรวจสอบข้อมูลทะเบียนรถและเจ้าของผ่านระบบฐานข้อมูลส่วนกลาง
-              </p>
-              <Button 
-                onClick={() => navigate('/motorcycle-search')}
-                className="w-full"
-                variant="outline"
-              >
-                ค้นหาข้อมูลทะเบียน
-              </Button>
+              <p className="text-slate-500 mb-4 text-sm">ตรวจสอบข้อมูลทะเบียนรถและเจ้าของ</p>
+              <Button onClick={() => navigate('/motorcycle-search')} className="w-full" variant="outline">ค้นหาข้อมูลทะเบียน</Button>
             </CardContent>
           </Card>
 
-          {/* Card: จัดการคะแนน (Admin+) - ใช้สีสันให้ดูเด่นแต่ซอฟต์ */}
+          {/* Card: จัดการคะแนน (Admin+) */}
           {isAdminOrUpper && (
-            <Card className="border-none shadow-md bg-white hover:shadow-xl transition-all duration-300 group overflow-hidden relative">
-              <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
-                <UserPlus className="h-24 w-24 -mr-8 -mt-8" />
-              </div>
+            <Card className="border-none shadow-md bg-white hover:shadow-xl transition-all duration-300 group overflow-hidden">
               <CardHeader>
                 <CardTitle className="flex items-center text-blue-600">
                   <UserPlus className="h-5 w-5 mr-2 animate-pulse" />
                   จัดการคะแนน
                 </CardTitle>
               </CardHeader>
-              <CardContent className="relative z-10">
-                <p className="text-slate-500 mb-4 text-sm">
-                  เครื่องมือสำหรับฝ่ายปกครอง: บันทึกความประพฤติ เพิ่ม/ลด แต้ม
-                </p>
-                <Button 
-                  onClick={() => toast({
-                    title: "Coming Soon",
-                    description: "ระบบกำลังเตรียมการจัดทำหน้าจอจัดการคะแนน",
-                  })}
-                  className="w-full bg-blue-600 hover:bg-blue-500"
-                >
-                  เปิดเมนูคะแนน
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Card: เมนูแอดมิน - เรียบหรูสไตล์เครื่องมือระบบ */}
-          {hasRole('super_admin') && (
-            <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 border-l-4 border-l-slate-800">
-              <CardHeader>
-                <CardTitle className="flex items-center text-slate-700">
-                  <Settings className="h-5 w-5 mr-2" />
-                  แผงควบคุมระบบ
-                </CardTitle>
-              </CardHeader>
               <CardContent>
-                <p className="text-slate-500 mb-4 text-sm">
-                  จัดการสิทธิ์ผู้ใช้งานและตั้งค่าการทำงานเบื้องต้นของแอปพลิเคชัน
-                </p>
-                <Button 
-                  onClick={() => navigate('/admin')}
-                  className="w-full"
-                  variant="secondary"
-                >
-                  จัดการผู้ใช้งาน
-                </Button>
+                <p className="text-slate-500 mb-4 text-sm">เครื่องมือฝ่ายปกครอง: บันทึกแต้มความประพฤติ</p>
+                <Button onClick={() => toast({ title: "Coming Soon", description: "ระบบกำลังเตรียมการจัดทำหน้าจอ" })} className="w-full bg-blue-600 hover:bg-blue-500">เปิดเมนูคะแนน</Button>
               </CardContent>
             </Card>
           )}
 
-          {/* ประกาศจากระบบ - ลูกเล่นจัดเต็มเป็นตัวจบ */}
-          <Card className="md:col-span-2 overflow-hidden border-none shadow-lg">
-            <div className="bg-gradient-to-r from-slate-800 to-slate-900 px-6 py-4 flex justify-between items-center">
+          {/* 2. ข่าวสารจากระบบพร้อมสถานะ System Health */}
+          <Card className="md:col-span-2 overflow-hidden border-none shadow-lg bg-white">
+            <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
               <CardTitle className="text-white flex items-center text-lg font-medium">
                 <span className="relative flex h-2 w-2 mr-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-400"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400"></span>
                 </span>
-                ข่าวสารจากระบบ
+                ข่าวสารและสถานะระบบ
               </CardTitle>
-              <span className="text-slate-400 text-[10px] font-mono tracking-widest bg-white/10 px-2 py-1 rounded">V2.0.4 - STABLE</span>
+              <div className="flex space-x-2">
+                <span className="text-slate-400 text-[10px] font-mono bg-white/5 px-2 py-1 rounded border border-white/10">VER 2.0.4</span>
+              </div>
             </div>
-            <CardContent className="bg-white p-6">
-              <div className="flex items-center space-x-4">
-                <div className="hidden sm:flex flex-shrink-0 bg-blue-50 p-3 rounded-xl">
-                  <ShieldCheck className="h-6 w-6 text-blue-600" />
+            
+            <CardContent className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* ฝั่งข้อความประกาศ */}
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                    <p className="text-slate-700 leading-relaxed text-sm">
+                      <span className="font-bold text-blue-700">ประกาศ:</span> ยินดีต้อนรับเข้าสู่ระบบ ASW-Moto หากคุณพบปัญหาในการล็อกอินหรือการสืบค้นข้อมูล กรุณาแจ้งผู้ดูแลระบบผ่านช่องทางที่เป็นทางการ
+                    </p>
+                  </div>
+                  <div className="flex items-center text-xs text-slate-400 italic">
+                    <Zap className="h-3 w-3 mr-1" /> อัปเดตล่าสุด: {new Date().toLocaleDateString('th-TH')}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-slate-700 leading-relaxed text-sm sm:text-base">
-                    ยินดีต้อนรับเข้าสู่ระบบ <span className="font-bold text-slate-900 underline decoration-blue-500 decoration-2">ASW-Moto</span> 
-                    <br />
-                    <span className="text-slate-500 text-sm">
-                      หากพบข้อสงสัยในการใช้งาน หรือระบบทำงานผิดปกติ สามารถติดต่อฝ่ายสารสนเทศได้ทันที
-                    </span>
-                  </p>
+
+                {/* ฝั่งสถานะระบบ (Health Check) */}
+                <div className="bg-slate-50 p-4 rounded-xl space-y-3">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center">
+                    <Server className="h-3 w-3 mr-1" /> System Health
+                  </h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="flex justify-between items-center bg-white p-2 rounded border border-slate-100">
+                      <div className="flex items-center text-xs font-medium text-slate-600">
+                        <Globe className="h-3 w-3 mr-2 text-blue-500" /> Web Online
+                      </div>
+                      <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    </div>
+                    <div className="flex justify-between items-center bg-white p-2 rounded border border-slate-100">
+                      <div className="flex items-center text-xs font-medium text-slate-600">
+                        <Database className="h-3 w-3 mr-2 text-emerald-500" /> DB Cluster
+                      </div>
+                      <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    </div>
+                    <div className="flex justify-between items-center bg-white p-2 rounded border border-slate-100">
+                      <div className="flex items-center text-xs font-medium text-slate-600">
+                        <Lock className="h-3 w-3 mr-2 text-indigo-500" /> SSL/TLS Secure
+                      </div>
+                      <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    </div>
+                    <div className="flex justify-between items-center bg-white p-2 rounded border border-slate-100">
+                      <div className="flex items-center text-xs font-medium text-slate-600">
+                        <Server className="h-3 w-3 mr-2 text-orange-500" /> Cloud Hosting
+                      </div>
+                      <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </CardContent>
