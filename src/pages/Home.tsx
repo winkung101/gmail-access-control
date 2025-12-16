@@ -139,8 +139,8 @@ const Home = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-slate-500 mb-4 text-sm">เครื่องมือฝ่ายปกครอง: บันทึกแต้มความประพฤติ</p>
-                <Button onClick={() => toast({ title: "Coming Soon", description: "ระบบกำลังเตรียมการจัดทำหน้าจอ" })} className="w-full bg-blue-600 hover:bg-blue-500">เปิดเมนูคะแนน</Button>
+                <p className="text-slate-500 mb-4 text-sm">บันทึกแต้มความประพฤติ นักเรียนทำผิดกฏ</p>
+                <Button onClick={() => toast({ title: "เร็วๆนี้", description: "กำลังอยู่ระหว่างการพัฒนาครับ" })} className="w-full bg-blue-600 hover:bg-blue-500">เปิดเมนูคะแนน</Button>
               </CardContent>
             </Card>
           )}
