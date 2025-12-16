@@ -1,4 +1,3 @@
-// src/hooks/useAuth.tsx
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -11,10 +10,6 @@ interface Profile {
   avatar_url: string | null;
   created_at: string;
   updated_at: string;
-}
-
-interface UserRole {
-  role: 'super_admin' | 'admin' | 'user';
 }
 
 interface AuthContextType {
@@ -49,11 +44,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchProfile = async (userId: string) => {
     try {
-      // ตรวจสอบทั้งคอลัมน์ id หรือ user_id ตามที่คุณตั้งชื่อในตาราง
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', userId) // เปลี่ยนจาก user_id เป็น id
+        .eq('user_id', userId)
         .maybeSingle();
       
       if (error) throw error;
@@ -65,24 +59,65 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const fetchRoles = async (userId: string) => {
-  // บังคับให้เป็น super_admin ไปเลยเพื่อดูว่าหน้าจอเปลี่ยนไหม
-  if (userId === '5a5bed4d-cfe3-4b24-a494-a551c8e0aabc') {
-     setRoles(['super_admin']);
-     return;
-  }
+    try {
+      // ดึงข้อมูลบทบาทจากตาราง user_roles
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId);
+      
+      if (error) throw error;
+      
+      // แปลงข้อมูลจาก Enum/Array เป็น Array ของ String
+      const fetchedRoles = data?.map((r: any) => String(r.role)) || [];
+      console.log("Fetched roles for user:", userId, fetchedRoles);
+      setRoles(fetchedRoles);
+    } catch (error) {
+      console.error('Error fetching roles:', error);
+      setRoles([]);
+    }
+  };
+
+  const refreshProfile = async () => {
+    if (user) {
+      await Promise.all([fetchProfile(user.id), fetchRoles(user.id)]);
+    }
+  };
+
   const hasRole = (role: string) => roles.includes(role);
 
   useEffect(() => {
+    // ตรวจสอบ Session เมื่อเริ่มต้นแอป
+    const initAuth = async () => {
+      const { data: { session: initialSession } } = await supabase.auth.getSession();
+      setSession(initialSession);
+      const currentUser = initialSession?.user ?? null;
+      setUser(currentUser);
+      
+      if (currentUser) {
+        await Promise.all([
+          fetchProfile(currentUser.id),
+          fetchRoles(currentUser.id)
+        ]);
+      }
+      setLoading(false);
+    };
+
+    initAuth();
+
+    // ติดตามการเปลี่ยนแปลงสถานะ Auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+      async (event, currentSession) => {
+        console.log("Auth event:", event);
+        setSession(currentSession);
+        const currentUser = currentSession?.user ?? null;
+        setUser(currentUser);
         
-        if (session?.user) {
-          setTimeout(() => {
-            fetchProfile(session.user.id);
-            fetchRoles(session.user.id);
-          }, 0);
+        if (currentUser) {
+          await Promise.all([
+            fetchProfile(currentUser.id),
+            fetchRoles(currentUser.id)
+          ]);
         } else {
           setProfile(null);
           setRoles([]);
@@ -91,23 +126,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     );
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await Promise.all([
-          fetchProfile(session.user.id),
-          fetchRoles(session.user.id)
-        ]);
-      }
-      setLoading(false);
-    });
-
     return () => subscription.unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -115,13 +138,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: redirectUrl,
         data: {
           full_name: fullName,
         },
