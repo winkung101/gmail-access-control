@@ -165,16 +165,48 @@ const Home = () => {
             </Card>
           )}
 
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle>ประกาศ/ประชาสัมพันธ์</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600">
-                ยินดีต้อนรับเข้าสู่ระบบสืบค้นทะเบียนรถจักรยานยนต์ หากพบปัญหาการใช้งาน กรุณาติดต่อผู้ดูแลระบบ
-              </p>
-            </CardContent>
-          </Card>
+         <Card className="md:col-span-2 overflow-hidden border-none shadow-lg">
+  {/* ส่วนหัวที่มีลูกเล่น Gradient */}
+  <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex justify-between items-center">
+    <CardTitle className="text-white flex items-center text-lg font-medium">
+      <span className="relative flex h-3 w-3 mr-3">
+        {/* ลูกเล่นจุดไฟกระพริบแบบ Ping */}
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-100 opacity-75"></span>
+        <span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
+      </span>
+      ประกาศจากระบบ
+    </CardTitle>
+    <span className="text-blue-100 text-xs font-mono uppercase tracking-widest">Live Updates</span>
+  </div>
+  
+  <CardContent className="bg-white p-6">
+    <div className="flex items-start space-x-4">
+      <div className="flex-shrink-0 bg-blue-50 p-3 rounded-2xl">
+        <Settings className="h-6 w-6 text-blue-600 animate-spin-slow" style={{ animationDuration: '8s' }} />
+      </div>
+      <div>
+        <p className="text-gray-700 leading-relaxed">
+          ยินดีต้อนรับเข้าสู่ระบบ <span className="font-bold text-blue-600">ASW-Moto</span> 
+          <br />
+          <span className="text-sm text-gray-500">
+            ระบบสืบค้นและลงทะเบียนรถจักรยานยนต์ออนไลน์ หากพบปัญหาการใช้งานหรือต้องการความช่วยเหลือ 
+            กรุณาติดต่อผู้ดูแลระบบ
+          </span>
+        </p>
+        
+        {/* เพิ่มปุ่มกดเล็กๆ เป็นลูกเล่น */}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            System Online
+          </span>
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+            v2.0.4
+          </span>
+        </div>
+      </div>
+    </div>
+  </CardContent>
+</Card>
         </div>
       </div>
     </div>
