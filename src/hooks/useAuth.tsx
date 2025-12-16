@@ -64,25 +64,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const fetchRoles = async (userId: string) => {
-    try {
-      console.log("กำลังดึง Role สำหรับ UID:", userId); // เพิ่มบรรทัดนี้เพื่อเช็ค UID ใน Console
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId);
-      
-      if (error) throw error;
-      
-      console.log("ข้อมูล Role ที่ดึงได้:", data); // เพิ่มบรรทัดนี้เพื่อดูว่า DB ส่งอะไรกลับมา
-      
-      // ปรับการ map ข้อมูลให้ยืดหยุ่นขึ้น
-      const userRoles = data?.map((r: any) => r.role) || [];
-      setRoles(userRoles);
-    } catch (error) {
-      console.error('Error fetching roles:', error);
-      setRoles([]);
-    }
-  };
+  try {
+    // เพิ่มบรรทัดนี้เพื่อเช็คว่า UID ที่ระบบใช้ดึงข้อมูลคืออะไร
+    console.log("Checking roles for UID:", userId); 
+
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    // เพิ่มบรรทัดนี้เพื่อดูว่าข้อมูลที่ได้จากฐานข้อมูลคืออะไร
+    console.log("Roles data from Supabase:", data); 
+
+    // ปรับการ map ข้อมูลให้รองรับกรณีข้อมูลมาในรูปแบบที่หลากหลาย
+    const fetchedRoles = data?.map((r: any) => r.role) || [];
+    console.log("Mapped roles array:", fetchedRoles);
+    
+    setRoles(fetchedRoles);
+  } catch (error) {
+    console.error('Error fetching roles:', error);
+    setRoles([]);
+  }
+};
 
   const refreshProfile = async () => {
     if (user) {
