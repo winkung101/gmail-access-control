@@ -65,13 +65,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchRoles = async (userId: string) => {
     try {
+      console.log("กำลังดึง Role สำหรับ UID:", userId); // เพิ่มบรรทัดนี้เพื่อเช็ค UID ใน Console
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', userId);
       
       if (error) throw error;
-      setRoles(data?.map((r: UserRole) => r.role) || []);
+      
+      console.log("ข้อมูล Role ที่ดึงได้:", data); // เพิ่มบรรทัดนี้เพื่อดูว่า DB ส่งอะไรกลับมา
+      
+      // ปรับการ map ข้อมูลให้ยืดหยุ่นขึ้น
+      const userRoles = data?.map((r: any) => r.role) || [];
+      setRoles(userRoles);
     } catch (error) {
       console.error('Error fetching roles:', error);
       setRoles([]);
