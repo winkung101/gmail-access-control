@@ -55,11 +55,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // 2. ดึง Profile
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .maybeSingle(); 
+     const { data: profileData } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId) // เปลี่ยนจาก user_id เป็น id ตาม Error ใน Console
+      .maybeSingle();
       setProfile(profileData);
     } catch (error) {
       console.error('Auth data loading error:', error);
