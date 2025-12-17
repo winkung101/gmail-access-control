@@ -5,49 +5,56 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useNavigate } from 'react-router-dom';
 import { 
   FileText, Search, Settings, UserPlus, UserMinus, 
-  ShieldCheck, Zap, Server, Database, Globe, Lock, Edit3 
+  ShieldCheck, Zap, Server, Database, Globe, Lock, Edit3, X
 } from 'lucide-react'; 
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
 
 const Home = () => {
   const { user, profile, signOut, loading: authLoading, hasRole } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // State สำหรับจัดการประกาศ
   const [announcement, setAnnouncement] = useState('กำลังโหลดประกาศล่าสุด...');
+  const [announcementData, setAnnouncementData] = useState<any>(null);
   const [lastUpdate, setLastUpdate] = useState<string>('');
+  const [showPopup, setShowPopup] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/auth');
   };
 
-  // ดึงข้อมูลประกาศจากฐานข้อมูล (Dynamic Fetch)
   useEffect(() => {
     const fetchAnnouncement = async () => {
       try {
         const { data, error } = await supabase
           .from('announcements')
-          .select('content, updated_at')
+          .select('*')
           .order('updated_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
-        if (error) {
-          if (error.code === '42P01') {
-            setAnnouncement('ยินดีต้อนรับเข้าสู่ระบบ ASW-Moto (กรุณาสร้างตาราง announcements ในฐานข้อมูล)');
-          } else {
-            throw error;
-          }
-        }
+        if (error) throw error;
 
         if (data) {
           setAnnouncement(data.content);
+          setAnnouncementData(data);
           setLastUpdate(new Date(data.updated_at).toLocaleDateString('th-TH'));
-        } else {
-          setAnnouncement('ยินดีต้อนรับเข้าสู่ระบบ ASW-Moto');
+
+          // --- Logic ตรวจสอบการแสดง Pop-up ---
+          const closedVersion = localStorage.getItem('announcement_closed_version');
+          // ถ้าเวอร์ชันใน DB ใหม่กว่าเวอร์ชันที่เคยปิดไป ให้แสดง Pop-up
+          if (!closedVersion || parseInt(closedVersion) < (data.version || 0)) {
+            setShowPopup(true);
+          }
         }
       } catch (err: any) {
         console.error('Error fetching announcement:', err.message);
@@ -56,6 +63,14 @@ const Home = () => {
 
     fetchAnnouncement();
   }, []);
+
+  const handleClosePopup = () => {
+    if (announcementData) {
+      // บันทึกเวอร์ชันที่ปิดลงในเครื่องผู้ใช้
+      localStorage.setItem('announcement_closed_version', announcementData.version?.toString() || '0');
+    }
+    setShowPopup(false);
+  };
 
   if (authLoading) {
     return (
@@ -82,6 +97,45 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-[#f1f5f9] pb-12">
+      {/* --- Pop-up ประกาศ --- */}
+      <Dialog open={showPopup} onOpenChange={setShowPopup}>
+        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden border-none shadow-2xl">
+          <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
+            <h2 className="text-lg font-bold flex items-center">
+              <Zap className="h-5 w-5 mr-2 text-yellow-400 fill-yellow-400" />
+              ประกาศจากระบบ
+            </h2>
+            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 h-8 w-8" onClick={handleClosePopup}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+          
+          <div className="p-6 bg-white">
+            {announcementData?.image_url && (
+              <img 
+                src={announcementData.image_url} 
+                alt="Announcement" 
+                className="w-full h-auto rounded-lg mb-4 shadow-sm border border-slate-100"
+              />
+            )}
+            <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+              <p className="text-slate-700 whitespace-pre-wrap leading-relaxed text-sm">
+                {announcementData?.content || announcement}
+              </p>
+            </div>
+            
+            <div className="mt-6 flex flex-col gap-2">
+              <Button onClick={handleClosePopup} className="w-full bg-slate-900 hover:bg-slate-800">
+                รับทราบ
+              </Button>
+              <Button variant="ghost" onClick={handleClosePopup} className="text-[11px] text-slate-400 hover:bg-transparent">
+                ไม่ต้องแสดงประกาศนี้อีกจนกว่าจะมีการอัปเดตใหม่
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
@@ -96,11 +150,7 @@ const Home = () => {
                 <span className="text-[10px] text-slate-500 font-medium uppercase tracking-tight">ระบบสืบค้นทะเบียนรถจักรยานยนต์</span>
               </div>
             </div>
-            <Button 
-              onClick={handleSignOut} 
-              variant="ghost" 
-              className="text-slate-500 hover:text-red-600 hover:bg-red-50 text-sm"
-            >
+            <Button onClick={handleSignOut} variant="ghost" className="text-slate-500 hover:text-red-600 hover:bg-red-50 text-sm">
               ออกจากระบบ
             </Button>
           </div>
@@ -168,7 +218,6 @@ const Home = () => {
             </CardContent>
           </Card>
 
-          {/* ปุ่มจัดการคะแนน - เชื่อมไปยังหน้า score-management */}
           {isAdminOrUpper && (
             <Card className="border-none shadow-md bg-white hover:shadow-xl transition-all duration-300 group overflow-hidden border-l-4 border-l-blue-500">
               <CardHeader>
@@ -179,10 +228,7 @@ const Home = () => {
               </CardHeader>
               <CardContent>
                 <p className="text-slate-500 mb-4 text-sm">บันทึกแต้มความประพฤติกรณีนักเรียนทำผิดกฎจราจร</p>
-                <Button 
-                  onClick={() => navigate('/score-management')} 
-                  className="w-full bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm"
-                >
+                <Button onClick={() => navigate('/score-management')} className="w-full bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm">
                   เปิดเมนูคะแนน
                 </Button>
               </CardContent>
@@ -190,8 +236,8 @@ const Home = () => {
           )}
 
           <Card className="md:col-span-2 overflow-hidden border-none shadow-lg bg-white">
-            <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
-              <CardTitle className="text-white flex items-center text-lg font-medium">
+            <div className="bg-slate-900 px-6 py-4 flex justify-between items-center text-white">
+              <CardTitle className="text-lg font-medium flex items-center">
                 <span className="relative flex h-2 w-2 mr-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400"></span>
@@ -200,16 +246,11 @@ const Home = () => {
               </CardTitle>
               <div className="flex items-center space-x-3">
                 {isSuperAdmin && (
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    className="text-white hover:bg-white/10 h-8 text-[11px] border border-white/20 px-3"
-                    onClick={() => navigate('/admin')}
-                  >
+                  <Button size="sm" variant="ghost" className="text-white hover:bg-white/10 h-8 text-[11px] border border-white/20 px-3" onClick={() => navigate('/admin')}>
                     <Edit3 className="h-3 w-3 mr-1" /> แก้ไขประกาศ
                   </Button>
                 )}
-                <span className="text-slate-400 text-[10px] font-mono bg-white/5 px-2 py-1 rounded border border-white/10 select-none">VER 2.0.4</span>
+                <span className="text-slate-400 text-[10px] font-mono bg-white/5 px-2 py-1 rounded border border-white/10">VER 2.1.0</span>
               </div>
             </div>
             
