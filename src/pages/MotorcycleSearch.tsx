@@ -1,407 +1,183 @@
-// src/pages/MotorcycleSearch.tsx
-import { useState, useEffect, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, ArrowLeft, FileText, Loader2, AlertCircle, Check } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { toast } from '@/hooks/use-toast';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { Input } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Search, Filter, ArrowLeft, User, hash } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/components/ui/use-toast';
 
-const convertGoogleDriveLink = (originalUrl: string): string => {
-  const match = originalUrl.match(/\/file\/d\/([^/]+)\//);
-  if (match && match[1]) {
-    return `https://drive.google.com/uc?export=view&id=${match[1]}`;
-  }
-  return originalUrl;
-};
+interface MotorcycleRecord {
+  id: string;
+  license_plate: string;
+  province: string;
+  brand: string;
+  model: string;
+  profiles: {
+    full_name: string;
+    classroom: string;
+  } | null;
+}
 
 const MotorcycleSearch = () => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedRoom, setSelectedRoom] = useState('all');
+  const [records, setRecords] = useState<MotorcycleRecord[]>([]);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { user, hasRole, loading: authLoading } = useAuth();
+  const { toast } = useToast();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
-  const [allMotorcyclesData, setAllMotorcyclesData] = useState<any[]>([]);
+  // รายชื่อห้องเรียน (สามารถปรับเปลี่ยนหรือดึงจาก DB ได้)
+  const rooms = [
+    "ม.1/1", "ม.1/2", "ม.2/1", "ม.2/2", "ม.3/1", "ม.3/2",
+    "ม.4/1", "ม.4/2", "ม.5/1", "ม.5/2", "ม.6/1", "ม.6/2"
+  ];
 
-  const GOOGLE_SHEET_ID = '1YqjDZXFLktWvwKg_2hY_kMGAhD69tmy6W4phpSfAMbM';
-  const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
-  const GOOGLE_SHEET_RANGE = 'DATA!A:I';
-
-  const canAccess = hasRole('super_admin') || hasRole('admin');
-
-  const fetchGoogleSheetData = useCallback(async () => {
-    if (!GOOGLE_SHEET_ID || !GOOGLE_API_KEY) {
-      const errorMessage = "Google Sheet ID or API Key is not configured.";
-      setInitialLoadError(errorMessage);
-      return [];
-    }
-
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${GOOGLE_SHEET_RANGE}?key=${GOOGLE_API_KEY}`;
+  const handleSearch = async () => {
+    setLoading(true);
     try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        let errorDetail = await response.text();
-        try {
-          const errorJson = JSON.parse(errorDetail);
-          errorDetail = errorJson.error.message || errorDetail;
-        } catch {}
+      let query = supabase
+        .from('motorcycles')
+        .select(`
+          id,
+          license_plate,
+          province,
+          brand,
+          model,
+          profiles (
+            full_name,
+            classroom
+          )
+        `);
 
-        if (response.status === 400 && errorDetail.includes("Unable to parse range")) {
-          throw new Error(`Google Sheets API Error (400): ไม่สามารถอ่านข้อมูลได้`);
-        } else if (response.status === 403) {
-          throw new Error(`Google Sheets API Error (403): การเข้าถึงถูกปฏิเสธ`);
-        } else if (response.status === 429) {
-          throw new Error(`Google Sheets API Error (429): โควต้าเกิน`);
-        }
-
-        throw new Error(`Google Sheets API Error (${response.status}): ${errorDetail}`);
+      // กรองตามคำค้นหา (เลขทะเบียน หรือ ชื่อ)
+      if (searchTerm) {
+        query = query.or(`license_plate.ilike.%${searchTerm}%,profiles.full_name.ilike.%${searchTerm}%`);
       }
 
-      const data = await response.json();
-      if (!data.values || data.values.length <= 1) {
-        setInitialLoadError("Google Sheet is empty or no data found.");
-        return [];
+      // กรองตามห้องเรียน
+      if (selectedRoom !== 'all') {
+        query = query.eq('profiles.classroom', selectedRoom);
       }
 
-      const rawHeaders = data.values[0];
-      const rows = data.values.slice(1);
+      const { data, error } = await query;
 
-      return rows.map((row: string[]) => {
-        let rowData: { [key: string]: string } = {};
-        rawHeaders.forEach((header: string, index: number) => {
-          let key = '';
-          switch (header.trim()) {
-            case 'ประทับเวลา': key = 'timestamp'; break;
-            case 'ชื่อ - สกุล': key = 'fullName'; break;
-            case 'ชั้น (Ex. 1/1)': key = 'classGrade'; break;
-            case 'ยี้ห้อ': key = 'brandModel'; break;
-            case 'สีของรถ (เช่น สีแดง)': key = 'vehicleColor'; break;
-            case 'ทะเบียนรถ ( 1ขข 1234 ร้อยเอ็ด)': key = 'plateNumber'; break;
-            case 'รูปถ่ายคู่กับรถด้านหน้า': key = 'frontPhotoUrl'; break;
-            case 'รูปถ่ายคู่กับทะเบียนรถ': key = 'licensePlatePhotoUrl'; break;
-            default:
-              key = header.replace(/\s+/g, '').replace(/[^a-zA-Z0-9]/g, '');
-              key = key.charAt(0).toLowerCase() + key.slice(1);
-              break;
-          }
-
-          const value = row[index] || '';
-          rowData[key] = (key === 'frontPhotoUrl' || key === 'licensePlatePhotoUrl')
-            ? convertGoogleDriveLink(value)
-            : value;
-        });
-        return rowData;
-      });
+      if (error) throw error;
+      setRecords(data as any || []);
     } catch (error: any) {
-      setInitialLoadError(error.message);
       toast({
-        title: "ข้อผิดพลาดในการดึงข้อมูล",
+        title: "เกิดข้อผิดพลาด",
         description: error.message,
         variant: "destructive",
       });
-      return [];
-    }
-  }, [GOOGLE_SHEET_ID, GOOGLE_API_KEY, GOOGLE_SHEET_RANGE]);
-
-  useEffect(() => {
-    if (!authLoading) {
-      const loadData = async () => {
-        if (canAccess && allMotorcyclesData.length === 0 && !initialLoadError) {
-          setIsInitialLoading(true);
-          setInitialLoadError(null);
-          const data = await fetchGoogleSheetData();
-          setAllMotorcyclesData(data);
-          setSearchResults(data);
-          setIsInitialLoading(false);
-        } else if (canAccess && allMotorcyclesData.length > 0 && isInitialLoading) {
-          setIsInitialLoading(false);
-        } else if (!canAccess && user) {
-          setIsInitialLoading(false);
-          setInitialLoadError("คุณไม่มีสิทธิ์เข้าถึงหน้านี้");
-        } else if (!user) {
-          navigate('/auth');
-        }
-      };
-      loadData();
-    }
-  }, [authLoading, canAccess, user, navigate, fetchGoogleSheetData, allMotorcyclesData.length, initialLoadError, isInitialLoading]);
-
-  const handleSearch = async () => {
-    if (!canAccess) {
-      toast({
-        title: "ไม่ได้รับอนุญาต",
-        description: "คุณไม่มีสิทธิ์ค้นหาข้อมูล",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!searchQuery.trim()) {
-      setSearchResults(allMotorcyclesData);
-      toast({
-        title: "แสดงข้อมูลทั้งหมด",
-        description: "ไม่มีคำค้นหา ระบบแสดงข้อมูลทั้งหมด",
-      });
-      return;
-    }
-
-    if (initialLoadError) {
-      toast({
-        title: "ไม่สามารถค้นหาได้",
-        description: "ไม่สามารถโหลดข้อมูลจาก Google Sheet ได้",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSearching(true);
-    setSearchResults([]);
-
-    try {
-      const lowerCaseQuery = searchQuery.toLowerCase();
-      const filteredResults = allMotorcyclesData.filter(m =>
-        (m.plateNumber && m.plateNumber.toLowerCase().includes(lowerCaseQuery)) ||
-        (m.brandModel && m.brandModel.toLowerCase().includes(lowerCaseQuery)) ||
-        (m.fullName && m.fullName.toLowerCase().includes(lowerCaseQuery)) ||
-        (m.vehicleColor && m.vehicleColor.toLowerCase().includes(lowerCaseQuery))
-      );
-      setSearchResults(filteredResults);
-
-      if (filteredResults.length === 0) {
-        toast({
-          title: "ไม่พบข้อมูล",
-          description: "ไม่พบข้อมูลที่ตรงกับคำค้นหานี้",
-        });
-      }
-    } catch (error) {
-      console.error("Search failed:", error);
-      toast({
-        title: "ข้อผิดพลาด",
-        description: "เกิดข้อผิดพลาดขณะค้นหาข้อมูล",
-        variant: "destructive",
-      });
     } finally {
-      setIsSearching(false);
+      setLoading(false);
     }
   };
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4">กำลังตรวจสอบสิทธิ์ผู้ใช้...</p>
-        </div>
-      </div>
-    );
-  }
+  // ให้ค้นหาอัตโนมัติเมื่อมีการเปลี่ยนห้องเรียน
+  useEffect(() => {
+    handleSearch();
+  }, [selectedRoom]);
 
-  if (!canAccess) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8 text-center">
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>ไม่ได้รับอนุญาต!</AlertTitle>
-            <AlertDescription>
-              คุณไม่มีสิทธิ์เข้าถึงหน้านี้ <br />
-              เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถดูข้อมูลได้
-            </AlertDescription>
-          </Alert>
-          <Button onClick={() => navigate('/home')}>กลับสู่หน้าหลัก</Button>
-        </div>
-      </div>
-    );
-  }
-
-  // ส่วนแสดงผลหลักสำหรับผู้ใช้ที่มีสิทธิ์
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center mb-8">
-          <Button
-            variant="outline"
-            onClick={() => navigate('/home')}
-            className="mr-4"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            กลับ
+    <div className="min-h-screen bg-[#f8fafc] pb-12">
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <Button variant="ghost" onClick={() => navigate(-1)} className="text-slate-600">
+            <ArrowLeft className="h-4 w-4 mr-2" /> ย้อนกลับ
           </Button>
-          <h1 className="text-3xl font-bold text-gray-900">ระบบสืบค้นทะเบียนรถจักรยานยนต์</h1>
+          <h1 className="text-lg font-bold text-slate-900">ระบบสืบค้นทะเบียน</h1>
+          <div className="w-20"></div> {/* Spacer */}
         </div>
+      </div>
 
-        {/* สถานะการเชื่อมต่อ Google Sheet แสดงอยู่ตลอด */}
-        {isInitialLoading && (
-          <Alert className="mb-4 bg-blue-100 text-blue-900 border-blue-200">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <AlertTitle>กำลังโหลดข้อมูล</AlertTitle>
-            <AlertDescription>
-              กำลังดึงข้อมูลเริ่มต้นจาก Google Sheet... กรุณารอสักครู่
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {initialLoadError && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>ข้อผิดพลาดในการโหลดข้อมูล!</AlertTitle>
-            <AlertDescription>
-              {initialLoadError} โปรดตรวจสอบ:
-              <ul className="list-disc list-inside mt-1">
-                <li>Google API Key ในไฟล์ `.env` ถูกต้องและเปิดใช้งาน Sheets API แล้ว</li>
-                <li>Google Sheet (ID: {GOOGLE_SHEET_ID}) ตั้งค่าการแชร์เป็น "Anyone with the link" (Viewer)</li>
-                <li>ค่า `GOOGLE_SHEET_RANGE` ("{GOOGLE_SHEET_RANGE}") ในโค้ด `MotorcycleSearch.tsx` ตรงกับชื่อชีตและช่วงคอลัมน์จริงใน Google Sheet</li>
-                <li>สำหรับรูปภาพ: ตรวจสอบว่า URL ใน Google Sheet เป็น **Direct URL** ไปยังรูปภาพ (เช่น .jpg, .png) หรือเป็นลิงก์ Google Drive ที่แชร์แบบสาธารณะและถูกแปลงได้</li>
-                <li className="font-bold text-red-700">ข้อควรระวัง: Error 429 (Quota Exceeded) เกิดจากการร้องขอ API มากเกินไป. โปรดรอสักครู่และลองใหม่ หรือพิจารณาขอเพิ่มโควต้าใน Google Cloud Console.</li>
-              </ul>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {!isInitialLoading && !initialLoadError && (
-          <Alert className="mb-4 bg-green-100 text-green-900 border-green-200">
-            <Check className="h-4 w-4" />
-            <AlertTitle>เชื่อมต่อสำเร็จ!</AlertTitle>
-            <AlertDescription>
-              ข้อมูลจาก Google Sheet ถูกโหลดสำเร็จแล้ว. พร้อมสำหรับการค้นหา
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Search className="h-5 w-5 mr-2" />
-              ค้นหาข้อมูลทะเบียน
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">
-                ค้นหาด้วย: ชื่อ-สกุล, หมายเลขทะเบียน, ยี่ห้อรุ่น, หรือสีของรถ
-              </label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="เช่น สมชาย, 1กข-1234, Wave110i, แดง"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                  disabled={isInitialLoading || !!initialLoadError}
+      <div className="max-w-5xl mx-auto px-4 pt-8">
+        {/* Search & Filter Section */}
+        <Card className="mb-8 border-none shadow-md overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+              {/* ช่องค้นหา */}
+              <div className="md:col-span-7 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="ค้นหาเลขทะเบียน หรือ ชื่อนักเรียน..."
+                  className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 />
-                <Button onClick={handleSearch} disabled={isSearching || isInitialLoading || !!initialLoadError}>
-                  {isSearching ? (
-                    <>กำลังค้นหา...</>
-                  ) : (
-                    <>
-                      <Search className="h-4 w-4 mr-2" />
-                      ค้นหา
-                    </>
-                  )}
-                </Button>
               </div>
-            </div>
 
-            <div className="bg-yellow-50 p-4 rounded-lg">
-              <h3 className="font-semibold text-yellow-900 mb-2">วิธีการค้นหา:</h3>
-              <ul className="text-yellow-800 space-y-1 text-sm">
-                <li>• ใส่ชื่อ-สกุล เช่น "สมชาย ใจดี"</li>
-                <li>• ใส่หมายเลขทะเบียน เช่น "1กข-1234"</li>
-                <li>• ใส่ยี่ห้อรุ่น เช่น "Wave110i"</li>
-                <li>• ใส่สีของรถ เช่น "สีแดง"</li>
-              </ul>
+              {/* เลือกห้องเรียน */}
+              <div className="md:col-span-3 relative">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <select
+                  className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none text-slate-600 font-medium cursor-pointer"
+                  value={selectedRoom}
+                  onChange={(e) => setSelectedRoom(e.target.value)}
+                >
+                  <option value="all">ทุกห้องเรียน</option>
+                  {rooms.map((room) => (
+                    <option key={room} value={room}>{room}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* ปุ่มค้นหา */}
+              <Button 
+                onClick={handleSearch} 
+                className="md:col-span-2 h-11 bg-blue-600 hover:bg-blue-700 rounded-xl transition-all"
+                disabled={loading}
+              >
+                {loading ? "กำลังค้นหา..." : "ค้นหาข้อมูล"}
+              </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* แสดงผลการค้นหา หรือข้อมูลทั้งหมดเมื่อโหลดครั้งแรก */}
-        {searchResults.length > 0 && !isSearching && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <FileText className="h-5 w-5 mr-2" />
-                ผลการค้นหา ({searchResults.length} รายการ)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {searchResults.map((result, index) => (
-                  <div key={result.plateNumber + index} className="border rounded-lg p-4 bg-white">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <p><strong>ประทับเวลา:</strong> {result.timestamp}</p>
-                        <p><strong>ชื่อ-สกุล:</strong> {result.fullName}</p>
-                        <p><strong>ชั้น:</strong> {result.classGrade}</p>
-                        <p><strong>ยี่ห้อรุ่น:</strong> {result.brandModel}</p>
-                        <p><strong>สีของรถ:</strong> {result.vehicleColor}</p>
-                        <p>
-                          <strong>ทะเบียนรถ:</strong> {result.plateNumber}
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        {/* ปุ่มดูรูปถ่ายคู่กับรถด้านหน้า */}
-                        {result.frontPhotoUrl && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                            onClick={() => window.open(result.frontPhotoUrl, '_blank')}
-                          >
-                            ดูรูปถ่ายคู่กับรถด้านหน้า
-                          </Button>
-                        )}
-                        {/* ปุ่มดูรูปถ่ายคู่กับทะเบียนรถ */}
-                        {result.licensePlatePhotoUrl && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full mt-2" // เพิ่ม mt-2 เพื่อเว้นระยะห่างระหว่างปุ่ม
-                            onClick={() => window.open(result.licensePlatePhotoUrl, '_blank')}
-                          >
-                            ดูรูปถ่ายคู่กับทะเบียนรถ
-                          </Button>
-                        )}
-                        {/* ถ้าไม่มี URL รูปภาพ ให้แสดงข้อความแจ้ง */}
-                        {!result.frontPhotoUrl && !result.licensePlatePhotoUrl && (
-                          <p className="text-sm text-muted-foreground">ไม่มีรูปภาพสำหรับรายการนี้</p>
-                        )}
+        {/* Results Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {records.length > 0 ? (
+            records.map((record) => (
+              <Card key={record.id} className="border-none shadow-sm hover:shadow-md transition-all group overflow-hidden">
+                <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex justify-between items-center">
+                  <div className="text-xs font-bold text-blue-600 uppercase tracking-widest">{record.province}</div>
+                  <div className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold text-slate-500">{record.profiles?.classroom || 'ไม่ระบุห้อง'}</div>
+                </div>
+                <CardContent className="pt-4">
+                  <div className="text-center mb-4">
+                    <div className="text-2xl font-black text-slate-800 group-hover:text-blue-600 transition-colors">
+                      {record.license_plate}
+                    </div>
+                    <div className="text-xs text-slate-400 font-medium">{record.brand} - {record.model}</div>
+                  </div>
+                  <div className="flex items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center mr-3 shadow-sm">
+                      <User className="h-4 w-4 text-slate-400" />
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <div className="text-xs text-slate-400">เจ้าของรถ</div>
+                      <div className="text-sm font-bold text-slate-700 truncate">
+                        {record.profiles?.full_name || 'ไม่พบข้อมูลชื่อ'}
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* แสดงเมื่อไม่พบข้อมูลการค้นหา (หลังจากลองค้นหาแล้ว) */}
-        {searchResults.length === 0 && searchQuery && !isSearching && !isInitialLoading && !initialLoadError && (
-          <Card className="mt-6">
-            <CardContent className="text-center py-8">
-              <p className="text-gray-500">ไม่พบข้อมูลที่ค้นหา</p>
-              <p className="text-sm text-gray-400 mt-2">
-                กรุณาตรวจสอบข้อมูลและลองค้นหาใหม่อีกครั้ง
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* แสดงเมื่อโหลดสำเร็จ แต่ยังไม่มีการค้นหา และไม่มีข้อมูลในชีท (ยกเว้นแถว Header) */}
-        {searchResults.length === 0 && !searchQuery && !isSearching && !isInitialLoading && !initialLoadError && (
-            <Card className="mt-6">
-                <CardContent className="text-center py-8">
-                    <p className="text-gray-500">ไม่พบข้อมูลใดๆ ใน Google Sheet</p>
-                    <p className="text-sm text-gray-400 mt-2">
-                        โปรดเพิ่มข้อมูลลงใน Google Sheet ของคุณ (นอกเหนือจากแถวส่วนหัว)
-                    </p>
                 </CardContent>
-            </Card>
-        )}
-
+              </Card>
+            ))
+          ) : (
+            <div className="col-span-full py-20 text-center">
+              <Search className="h-12 w-12 text-slate-200 mx-auto mb-4" />
+              <h3 className="text-slate-500 font-medium">ไม่พบข้อมูลทะเบียนที่ท่านต้องการ</h3>
+              <p className="text-slate-400 text-sm">ลองค้นหาด้วยเลขทะเบียนอื่น หรือเปลี่ยนการกรองห้องเรียน</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
