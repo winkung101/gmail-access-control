@@ -14,7 +14,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog";
 
 const Home = () => {
@@ -38,8 +37,7 @@ const Home = () => {
         const { data, error } = await supabase
           .from('announcements')
           .select('*')
-          .order('updated_at', { ascending: false })
-          .limit(1)
+          .eq('id', '00000000-0000-0000-0000-000000000000') // ดึง ID หลัก
           .maybeSingle();
 
         if (error) throw error;
@@ -50,9 +48,10 @@ const Home = () => {
           setLastUpdate(new Date(data.updated_at).toLocaleDateString('th-TH'));
 
           // --- Logic ตรวจสอบการแสดง Pop-up ---
-          const closedVersion = localStorage.getItem('announcement_closed_version');
-          // ถ้าเวอร์ชันใน DB ใหม่กว่าเวอร์ชันที่เคยปิดไป ให้แสดง Pop-up
-          if (!closedVersion || parseInt(closedVersion) < (data.version || 0)) {
+          // เช็คว่าเวอร์ชันนี้ถูกสั่ง "ไม่ต้องแสดงอีก" หรือไม่
+          const hideFlag = localStorage.getItem(`hide_announcement_v${data.version}`);
+          
+          if (!hideFlag) {
             setShowPopup(true);
           }
         }
@@ -64,10 +63,15 @@ const Home = () => {
     fetchAnnouncement();
   }, []);
 
-  const handleClosePopup = () => {
+  // ฟังก์ชันปิดปกติ (กดเข้าหน้าเว็บใหม่จะเด้งอีก)
+  const handleCloseSimple = () => {
+    setShowPopup(false);
+  };
+
+  // ฟังก์ชันปิดแบบถาวรสำหรับเวอร์ชันนั้นๆ
+  const handleClosePermanently = () => {
     if (announcementData) {
-      // บันทึกเวอร์ชันที่ปิดลงในเครื่องผู้ใช้
-      localStorage.setItem('announcement_closed_version', announcementData.version?.toString() || '0');
+      localStorage.setItem(`hide_announcement_v${announcementData.version}`, 'true');
     }
     setShowPopup(false);
   };
@@ -97,40 +101,51 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-[#f1f5f9] pb-12">
-      {/* --- Pop-up ประกาศ --- */}
+      {/* --- Pop-up ประกาศฉบับสมบูรณ์ --- */}
       <Dialog open={showPopup} onOpenChange={setShowPopup}>
-        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-[90vw] sm:max-w-[500px] p-0 overflow-hidden border-none shadow-2xl rounded-2xl">
+          {/* Header */}
           <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
             <h2 className="text-lg font-bold flex items-center">
               <Zap className="h-5 w-5 mr-2 text-yellow-400 fill-yellow-400" />
               ประกาศจากระบบ
             </h2>
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 h-8 w-8" onClick={handleClosePopup}>
+            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 h-8 w-8" onClick={handleCloseSimple}>
               <X className="h-5 w-5" />
             </Button>
           </div>
           
-          <div className="p-6 bg-white">
+          <div className="bg-white overflow-y-auto max-h-[80vh]">
+            {/* Image Section 1080x1080 support */}
             {announcementData?.image_url && (
-              <img 
-                src={announcementData.image_url} 
-                alt="Announcement" 
-                className="w-full h-auto rounded-lg mb-4 shadow-sm border border-slate-100"
-              />
+              <div className="aspect-square w-full bg-slate-100 relative">
+                <img 
+                  src={announcementData.image_url} 
+                  alt="Announcement" 
+                  className="w-full h-full object-cover"
+                />
+              </div>
             )}
-            <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-              <p className="text-slate-700 whitespace-pre-wrap leading-relaxed text-sm">
-                {announcementData?.content || announcement}
-              </p>
-            </div>
             
-            <div className="mt-6 flex flex-col gap-2">
-              <Button onClick={handleClosePopup} className="w-full bg-slate-900 hover:bg-slate-800">
-                รับทราบ
-              </Button>
-              <Button variant="ghost" onClick={handleClosePopup} className="text-[11px] text-slate-400 hover:bg-transparent">
-                ไม่ต้องแสดงประกาศนี้อีกจนกว่าจะมีการอัปเดตใหม่
-              </Button>
+            {/* Text Section */}
+            <div className="p-6 space-y-4">
+              <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                <p className="text-slate-700 whitespace-pre-wrap leading-relaxed text-sm">
+                  {announcementData?.content || announcement}
+                </p>
+              </div>
+              
+              <div className="flex flex-col gap-2">
+                <Button onClick={handleCloseSimple} className="w-full h-11 bg-slate-900 hover:bg-slate-800 rounded-xl">
+                  รับทราบ
+                </Button>
+                <button 
+                  onClick={handleClosePermanently}
+                  className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors py-1 underline underline-offset-4"
+                >
+                  ไม่ต้องแสดงประกาศนี้อีก
+                </button>
+              </div>
             </div>
           </div>
         </DialogContent>
