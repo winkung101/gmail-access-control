@@ -11,6 +11,7 @@ import Auth from "./pages/Auth";
 import Home from "./pages/Home";
 import Admin from "./pages/Admin";
 import MotorcycleRegistration from "./pages/MotorcycleRegistration";
+import ScoreManagement from "./pages/ScoreManagement";
 import MotorcycleSearch from "./pages/MotorcycleSearch";
 import NotFound from "./pages/NotFound";
 import AppFooter from "./components/AppFooter"; // เพิ่ม: นำเข้า AppFooter
@@ -69,6 +70,7 @@ const App = () => (
                   }
                 />
                 <Route path="*" element={<NotFound />} />
+                <Route path="/score-management" element={<ScoreManagement />} />
               </Routes>
             </main>
             <AppFooter /> {/* เพิ่ม AppFooter ที่นี่ */}

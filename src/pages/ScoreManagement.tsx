@@ -47,7 +47,7 @@ interface ScoreRecord {
 
 // ใส่ Google Sheet ID ตรงนี้
 const GOOGLE_SHEET_ID = '1YqjDZXFLktWvwKg_2hY_kMGAhD69tmy6W4phpSfAMbM';
-const SHEET_NAME = 'Form Responses 1'; // ชื่อ sheet สำหรับ Google Form
+const SHEET_NAME = 'DATA'; // ชื่อ sheet สำหรับ Google Form
 
 const ScoreManagement = () => {
   const { user, hasRole, loading: authLoading } = useAuth();
