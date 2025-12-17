@@ -36,7 +36,6 @@ const Home = () => {
           .maybeSingle();
 
         if (error) {
-          // หากหาตารางไม่พบ ให้ใช้ข้อความเริ่มต้นแทนเพื่อไม่ให้หน้าจอ Error
           if (error.code === '42P01') {
             setAnnouncement('ยินดีต้อนรับเข้าสู่ระบบ ASW-Moto (กรุณาสร้างตาราง announcements ในฐานข้อมูล)');
           } else {
@@ -78,13 +77,11 @@ const Home = () => {
     return 'ผู้ใช้ทั่วไป';
   };
 
-  // ตรวจสอบสิทธิ์สำหรับการแสดงเมนู Admin
   const isAdminOrUpper = hasRole('admin') || hasRole('super_admin') || user?.email === 'winawathns11@gmail.com';
   const isSuperAdmin = hasRole('super_admin') || user?.email === 'winawathns11@gmail.com';
 
   return (
     <div className="min-h-screen bg-[#f1f5f9] pb-12">
-      {/* 1. Navbar พร้อมโลโก้โรงเรียน */}
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
@@ -113,7 +110,6 @@ const Home = () => {
       <div className="max-w-4xl mx-auto px-4 pt-8 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          {/* Card: ข้อมูลผู้ใช้ */}
           <Card className="border-none shadow-sm hover:shadow-md transition-shadow duration-300 group">
             <div className="h-1 bg-slate-200 group-hover:bg-blue-500 transition-colors duration-500" />
             <CardHeader className="pb-2">
@@ -142,7 +138,6 @@ const Home = () => {
             </CardContent>
           </Card>
 
-          {/* Card: ลงทะเบียนรถ */}
           <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 group">
             <CardHeader>
               <CardTitle className="flex items-center text-slate-700">
@@ -158,7 +153,6 @@ const Home = () => {
             </CardContent>
           </Card>
 
-          {/* Card: ระบบสืบค้น */}
           <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 group">
             <CardHeader>
               <CardTitle className="flex items-center text-slate-700">
@@ -174,7 +168,7 @@ const Home = () => {
             </CardContent>
           </Card>
 
-          {/* Card: จัดการคะแนน (เห็นเฉพาะ Admin ขึ้นไป) */}
+          {/* ปุ่มจัดการคะแนน - เชื่อมไปยังหน้า score-management */}
           {isAdminOrUpper && (
             <Card className="border-none shadow-md bg-white hover:shadow-xl transition-all duration-300 group overflow-hidden border-l-4 border-l-blue-500">
               <CardHeader>
@@ -186,7 +180,7 @@ const Home = () => {
               <CardContent>
                 <p className="text-slate-500 mb-4 text-sm">บันทึกแต้มความประพฤติกรณีนักเรียนทำผิดกฎจราจร</p>
                 <Button 
-                  onClick={() => toast({ title: "Coming Soon", description: "ระบบจัดการแต้มกำลังอยู่ระหว่างการพัฒนา" })} 
+                  onClick={() => navigate('/score-management')} 
                   className="w-full bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm"
                 >
                   เปิดเมนูคะแนน
@@ -195,7 +189,6 @@ const Home = () => {
             </Card>
           )}
 
-          {/* 2. ข่าวสารจากระบบพร้อมสถานะ System Health */}
           <Card className="md:col-span-2 overflow-hidden border-none shadow-lg bg-white">
             <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
               <CardTitle className="text-white flex items-center text-lg font-medium">
@@ -206,7 +199,6 @@ const Home = () => {
                 ข่าวสารและสถานะระบบ
               </CardTitle>
               <div className="flex items-center space-x-3">
-                {/* ปุ่มแก้ไขประกาศสำหรับ Super Admin */}
                 {isSuperAdmin && (
                   <Button 
                     size="sm" 
@@ -223,7 +215,6 @@ const Home = () => {
             
             <CardContent className="p-6">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* ฝั่งข้อความประกาศ */}
                 <div className="lg:col-span-2 space-y-4">
                   <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 shadow-inner">
                     <p className="text-slate-700 leading-relaxed text-sm">
@@ -235,7 +226,6 @@ const Home = () => {
                   </div>
                 </div>
 
-                {/* ฝั่งสถานะระบบ (Health Check) */}
                 <div className="bg-slate-50 p-4 rounded-xl space-y-3 border border-slate-100 shadow-sm">
                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center">
                     <Server className="h-3 w-3 mr-1" /> Live Monitors
@@ -256,7 +246,6 @@ const Home = () => {
   );
 };
 
-// Component ย่อยสำหรับแสดงสถานะ Health
 const StatusItem = ({ icon, label }: { icon: React.ReactNode, label: string }) => (
   <div className="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-100 shadow-sm transition-transform hover:scale-[1.02]">
     <div className="flex items-center text-[11px] font-medium text-slate-600">
