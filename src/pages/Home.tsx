@@ -4,27 +4,28 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useNavigate } from 'react-router-dom';
 import { 
-  FileText, Search, Settings, UserPlus, UserMinus, 
-  ShieldCheck, Zap, Server, Database, Globe, Lock, Edit3, X
+  FileText, Search, UserPlus, ShieldCheck, Zap, Server, 
+  Database, Globe, Lock, Edit3, X, AlertTriangle
 } from 'lucide-react'; 
-import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
 
 const Home = () => {
   const { user, profile, signOut, loading: authLoading, hasRole } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
 
+  // State สำหรับประกาศ
   const [announcement, setAnnouncement] = useState('กำลังโหลดประกาศล่าสุด...');
   const [announcementData, setAnnouncementData] = useState<any>(null);
   const [lastUpdate, setLastUpdate] = useState<string>('');
   const [showPopup, setShowPopup] = useState(false);
+
+  // State สำหรับ Feature Flags (เปิด/ปิดระบบ)
+  const [features, setFeatures] = useState<any>({});
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
 
   const handleSignOut = async () => {
     await signOut();
@@ -32,12 +33,13 @@ const Home = () => {
   };
 
   useEffect(() => {
+    // 1. ดึงข้อมูลประกาศ
     const fetchAnnouncement = async () => {
       try {
         const { data, error } = await supabase
           .from('announcements')
           .select('*')
-          .eq('id', '00000000-0000-0000-0000-000000000000') // ดึง ID หลัก
+          .eq('id', '00000000-0000-0000-0000-000000000000')
           .maybeSingle();
 
         if (error) throw error;
@@ -47,10 +49,8 @@ const Home = () => {
           setAnnouncementData(data);
           setLastUpdate(new Date(data.updated_at).toLocaleDateString('th-TH'));
 
-          // --- Logic ตรวจสอบการแสดง Pop-up ---
-          // เช็คว่าเวอร์ชันนี้ถูกสั่ง "ไม่ต้องแสดงอีก" หรือไม่
+          // เช็ค localStorage ว่าเคยปิดประกาศเวอร์ชันนี้ไปหรือยัง
           const hideFlag = localStorage.getItem(`hide_announcement_v${data.version}`);
-          
           if (!hideFlag) {
             setShowPopup(true);
           }
@@ -60,20 +60,61 @@ const Home = () => {
       }
     };
 
+    // 2. ดึงสถานะ Feature Flags
+    const fetchFeatures = async () => {
+      try {
+        const { data } = await supabase.from('feature_flags').select('*');
+        if (data) {
+          const featureMap = data.reduce((acc: any, curr: any) => {
+            acc[curr.feature_key] = curr;
+            return acc;
+          }, {});
+          setFeatures(featureMap);
+        }
+      } catch (err) {
+        console.error('Error fetching features:', err);
+      }
+    };
+
     fetchAnnouncement();
+    fetchFeatures();
   }, []);
 
-  // ฟังก์ชันปิดปกติ (กดเข้าหน้าเว็บใหม่จะเด้งอีก)
+  // ฟังก์ชันปิด Pop-up ชั่วคราว
   const handleCloseSimple = () => {
     setShowPopup(false);
   };
 
-  // ฟังก์ชันปิดแบบถาวรสำหรับเวอร์ชันนั้นๆ
+  // ฟังก์ชันปิด Pop-up ถาวร (สำหรับเวอร์ชันนี้)
   const handleClosePermanently = () => {
     if (announcementData) {
       localStorage.setItem(`hide_announcement_v${announcementData.version}`, 'true');
     }
     setShowPopup(false);
+  };
+
+  const getRoleDisplay = () => {
+    if (user?.email === 'student_68@atsamat.ac.th') return 'สภานักเรียน';
+    if (user?.email === 'sad@atsamat.ac.th') return 'ฝ่ายกิจการนักเรียน';
+    if (hasRole('super_admin') || user?.email === 'winawathns11@gmail.com') return 'ผู้ดูแลระบบสูงสุด';
+    if (hasRole('admin')) return 'แอดมิน';
+    return 'ผู้ใช้ทั่วไป';
+  };
+
+  const isAdminOrUpper = hasRole('admin') || hasRole('super_admin') || user?.email === 'winawathns11@gmail.com';
+  const isSuperAdmin = hasRole('super_admin') || user?.email === 'winawathns11@gmail.com';
+
+  // --- ฟังก์ชันเช็คสิทธิ์ก่อนเปลี่ยนหน้า ---
+  const handleNavigate = (path: string, featureKey: string) => {
+    const feature = features[featureKey];
+    
+    // เงื่อนไข: ถ้าไม่มีข้อมูล OR เปิดใช้งาน OR เป็น Super Admin -> ให้ผ่านได้
+    if (!feature || feature.is_enabled || isSuperAdmin) {
+      navigate(path);
+    } else {
+      // ถ้าปิดอยู่ -> แสดงแจ้งเตือน
+      setBlockedMessage(feature.message || 'ระบบปิดปรับปรุงชั่วคราว');
+    }
   };
 
   if (authLoading) {
@@ -87,24 +128,12 @@ const Home = () => {
     );
   }
 
-  const getRoleDisplay = () => {
-    if (user?.email === 'student_68@atsamat.ac.th') return 'สภานักเรียน';
-    if (user?.email === 'sad@atsamat.ac.th') return 'ฝ่ายกิจการนักเรียน';
-    // if (user?.email === 'winawathns11@gmail.com') return 'ผู้ดูแลระบบ';
-    if (hasRole('super_admin')) return 'ผู้ดูแลระบบ';
-    if (hasRole('admin')) return 'แอดมิน';
-    return 'ผู้ใช้ทั่วไป';
-  };
-
-  const isAdminOrUpper = hasRole('admin') || hasRole('super_admin') || user?.email === 'winawathns11@gmail.com';
-  const isSuperAdmin = hasRole('super_admin') || user?.email === 'winawathns11@gmail.com';
-
   return (
     <div className="min-h-screen bg-[#f1f5f9] pb-12">
-      {/* --- Pop-up ประกาศฉบับสมบูรณ์ --- */}
+      
+      {/* --- 1. Pop-up ประกาศ --- */}
       <Dialog open={showPopup} onOpenChange={setShowPopup}>
         <DialogContent className="max-w-[90vw] sm:max-w-[500px] p-0 overflow-hidden border-none shadow-2xl rounded-2xl">
-          {/* Header */}
           <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
             <h2 className="text-lg font-bold flex items-center">
               <Zap className="h-5 w-5 mr-2 text-yellow-400 fill-yellow-400" />
@@ -116,7 +145,6 @@ const Home = () => {
           </div>
           
           <div className="bg-white overflow-y-auto max-h-[80vh]">
-            {/* Image Section 1080x1080 support */}
             {announcementData?.image_url && (
               <div className="aspect-square w-full bg-slate-100 relative">
                 <img 
@@ -126,15 +154,12 @@ const Home = () => {
                 />
               </div>
             )}
-            
-            {/* Text Section */}
             <div className="p-6 space-y-4">
               <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                 <p className="text-slate-700 whitespace-pre-wrap leading-relaxed text-sm">
                   {announcementData?.content || announcement}
                 </p>
               </div>
-              
               <div className="flex flex-col gap-2">
                 <Button onClick={handleCloseSimple} className="w-full h-11 bg-slate-900 hover:bg-slate-800 rounded-xl">
                   รับทราบ
@@ -151,6 +176,25 @@ const Home = () => {
         </DialogContent>
       </Dialog>
 
+      {/* --- 2. Pop-up แจ้งเตือนเมื่อระบบปิด --- */}
+      <Dialog open={!!blockedMessage} onOpenChange={() => setBlockedMessage(null)}>
+        <DialogContent className="sm:max-w-md border-none shadow-xl rounded-2xl">
+          <div className="flex flex-col items-center justify-center text-center p-6 space-y-4">
+            <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center animate-pulse">
+              <AlertTriangle className="h-8 w-8 text-red-600" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900">ขออภัย ระบบปิดให้บริการชั่วคราว</h2>
+            <div className="bg-slate-50 p-4 rounded-lg w-full border border-slate-100">
+              <p className="text-slate-600 font-medium">{blockedMessage}</p>
+            </div>
+            <Button className="w-full bg-slate-900 hover:bg-slate-800 h-11 rounded-xl" onClick={() => setBlockedMessage(null)}>
+              รับทราบ
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- Navbar --- */}
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
@@ -172,9 +216,11 @@ const Home = () => {
         </div>
       </nav>
 
+      {/* --- Main Content --- */}
       <div className="max-w-4xl mx-auto px-4 pt-8 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
+          {/* Card: ข้อมูลผู้ใช้ */}
           <Card className="border-none shadow-sm hover:shadow-md transition-shadow duration-300 group">
             <div className="h-1 bg-slate-200 group-hover:bg-blue-500 transition-colors duration-500" />
             <CardHeader className="pb-2">
@@ -203,38 +249,57 @@ const Home = () => {
             </CardContent>
           </Card>
 
-          <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 group">
+          {/* Card: ลงทะเบียนรถ (มีเช็คสถานะ) */}
+          <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden">
+            {features['registration'] && !features['registration'].is_enabled && !isSuperAdmin && (
+              <div className="absolute top-3 right-3 px-2 py-1 bg-red-100 text-red-600 text-[10px] font-bold rounded border border-red-200">CLOSED</div>
+            )}
             <CardHeader>
               <CardTitle className="flex items-center text-slate-700">
-                <FileText className="h-5 w-5 mr-2 text-indigo-500" />
+                <FileText className={`h-5 w-5 mr-2 ${features['registration']?.is_enabled ? 'text-indigo-500' : 'text-slate-400'}`} />
                 ลงทะเบียนรถ
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-slate-500 mb-4 text-sm">บันทึกข้อมูลรถจักรยานยนต์ใหม่เข้าระบบเพื่อออกสติ๊กเกอร์</p>
-              <Button onClick={() => navigate('/motorcycle-registration')} className="w-full bg-slate-900 hover:bg-blue-600 shadow-sm transition-colors">
+              <Button 
+                onClick={() => handleNavigate('/motorcycle-registration', 'registration')} 
+                className={`w-full shadow-sm transition-colors ${features['registration']?.is_enabled || isSuperAdmin ? 'bg-slate-900 hover:bg-blue-600' : 'bg-slate-200 text-slate-400 hover:bg-slate-200'}`}
+              >
                 เข้าสู่หน้าลงทะเบียน
               </Button>
             </CardContent>
           </Card>
 
-          <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 group">
+          {/* Card: ระบบสืบค้น (มีเช็คสถานะ) */}
+          <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 group relative">
+            {features['search'] && !features['search'].is_enabled && !isSuperAdmin && (
+              <div className="absolute top-3 right-3 px-2 py-1 bg-red-100 text-red-600 text-[10px] font-bold rounded border border-red-200">MAINTENANCE</div>
+            )}
             <CardHeader>
               <CardTitle className="flex items-center text-slate-700">
-                <Search className="h-5 w-5 mr-2 text-emerald-500" />
+                <Search className={`h-5 w-5 mr-2 ${features['search']?.is_enabled ? 'text-emerald-500' : 'text-slate-400'}`} />
                 สืบค้นทะเบียน
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-slate-500 mb-4 text-sm">ตรวจสอบข้อมูลทะเบียนรถและเจ้าของผ่านระบบ Cloud</p>
-              <Button onClick={() => navigate('/motorcycle-search')} className="w-full" variant="outline">
+              <Button 
+                onClick={() => handleNavigate('/motorcycle-search', 'search')} 
+                className={`w-full ${features['search']?.is_enabled || isSuperAdmin ? '' : 'text-slate-400 border-slate-200 bg-slate-50'}`}
+                variant="outline"
+              >
                 ค้นหาข้อมูลทะเบียน
               </Button>
             </CardContent>
           </Card>
 
+          {/* Card: จัดการคะแนน (เฉพาะ Admin + มีเช็คสถานะ) */}
           {isAdminOrUpper && (
-            <Card className="border-none shadow-md bg-white hover:shadow-xl transition-all duration-300 group overflow-hidden border-l-4 border-l-blue-500">
+            <Card className="border-none shadow-md bg-white hover:shadow-xl transition-all duration-300 group overflow-hidden border-l-4 border-l-blue-500 relative">
+              {features['score'] && !features['score'].is_enabled && !isSuperAdmin && (
+                <div className="absolute top-3 right-3 px-2 py-1 bg-red-100 text-red-600 text-[10px] font-bold rounded border border-red-200">CLOSED</div>
+              )}
               <CardHeader>
                 <CardTitle className="flex items-center text-blue-600">
                   <UserPlus className="h-5 w-5 mr-2 animate-pulse" />
@@ -242,14 +307,18 @@ const Home = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-slate-500 mb-4 text-sm">บันทึกแต้มความประพฤติกรณีนักเรียนทำผิดกฎ</p>
-                <Button onClick={() => navigate('/score-management')} className="w-full bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm">
+                <p className="text-slate-500 mb-4 text-sm">บันทึกแต้มความประพฤติกรณีนักเรียนทำผิดกฎจราจร</p>
+                <Button 
+                  onClick={() => handleNavigate('/score-management', 'score')} 
+                  className={`w-full shadow-sm ${features['score']?.is_enabled || isSuperAdmin ? 'bg-blue-600 hover:bg-blue-500' : 'bg-slate-200 text-slate-400 hover:bg-slate-200'}`}
+                >
                   เปิดเมนูคะแนน
                 </Button>
               </CardContent>
             </Card>
           )}
 
+          {/* Card: ข่าวสารและสถานะระบบ */}
           <Card className="md:col-span-2 overflow-hidden border-none shadow-lg bg-white">
             <div className="bg-slate-900 px-6 py-4 flex justify-between items-center text-white">
               <CardTitle className="text-lg font-medium flex items-center">
