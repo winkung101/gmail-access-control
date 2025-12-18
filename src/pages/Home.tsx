@@ -242,7 +242,7 @@ const Home = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-slate-500 mb-4 text-sm">บันทึกแต้มความประพฤติกรณีนักเรียนทำผิดกฎจราจร</p>
+                <p className="text-slate-500 mb-4 text-sm">บันทึกแต้มความประพฤติกรณีนักเรียนทำผิดกฎ</p>
                 <Button onClick={() => navigate('/score-management')} className="w-full bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm">
                   เปิดเมนูคะแนน
                 </Button>
