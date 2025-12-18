@@ -90,7 +90,7 @@ const Home = () => {
   const getRoleDisplay = () => {
     if (user?.email === 'student_68@atsamat.ac.th') return 'สภานักเรียน';
     if (user?.email === 'sad@atsamat.ac.th') return 'ฝ่ายกิจการนักเรียน';
-    if (user?.email === 'winawathns11@gmail.com') return 'ผู้ดูแลระบบสูงสุด';
+    // if (user?.email === 'winawathns11@gmail.com') return 'ผู้ดูแลระบบ';
     if (hasRole('super_admin')) return 'ผู้ดูแลระบบ';
     if (hasRole('admin')) return 'แอดมิน';
     return 'ผู้ใช้ทั่วไป';
