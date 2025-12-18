@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { 
   ArrowLeft, Plus, Search, History, Loader2, 
-  Users, AlertCircle, Clock, Printer, Edit, Trash2, UserPlus, RefreshCw
+  Users, AlertCircle, Clock, Printer, Edit, Trash2, UserPlus, RefreshCw, XCircle
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter
@@ -35,18 +35,7 @@ interface Student {
   model: string;
   color: string;
   licensePlate: string;
-  source: 'google' | 'supabase'; // ระบุที่มาของข้อมูล
-}
-
-interface ScoreRecord {
-  id: string;
-  student_name: string;
-  student_class: string;
-  license_plate: string;
-  score_change: number;
-  reason: string;
-  recorded_by: string;
-  created_at: string;
+  source: 'google' | 'supabase';
 }
 
 const ScoreManagement = () => {
@@ -54,33 +43,24 @@ const ScoreManagement = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Data States
   const [students, setStudents] = useState<Student[]>([]);
-  const [scoreRecords, setScoreRecords] = useState<ScoreRecord[]>([]);
+  const [scoreRecords, setScoreRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Action States
+  // States สำหรับ Dialog
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [scoreChange, setScoreChange] = useState<number>(0);
   const [selectedReason, setSelectedReason] = useState(REASON_OPTIONS[0]);
   const [otherReason, setOtherReason] = useState('');
   
-  // Dialog States
   const [scoreDialogOpen, setScoreDialogOpen] = useState(false);
-  
-  // CRUD Student States
   const [crudDialogOpen, setCrudDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [studentForm, setStudentForm] = useState<Student>({ 
     name: '', class: '', brand: '', model: '', color: '', licensePlate: '', source: 'supabase' 
   });
 
-  // CRUD Score Record States (แก้ไขประวัติ)
-  const [editScoreDialogOpen, setEditScoreDialogOpen] = useState(false);
-  const [editingRecord, setEditingRecord] = useState<ScoreRecord | null>(null);
-
-  // Permission Check
   const isSuperAdmin = hasRole('super_admin') || user?.email === 'winawathns11@gmail.com';
   const isAdmin = hasRole('admin') || isSuperAdmin;
 
@@ -118,7 +98,7 @@ const ScoreManagement = () => {
         })).filter((s: any) => s.name);
       }
 
-      // 2. ดึง Supabase Motorcycles
+      // 2. ดึง Supabase
       const { data: motoData } = await supabase.from('motorcycles').select('*');
       const supabaseStudents: Student[] = motoData ? motoData.map(m => ({
         id: m.id,
@@ -131,20 +111,11 @@ const ScoreManagement = () => {
         source: 'supabase' as const
       })) : [];
 
-      // 3. รวมข้อมูล (Supabase ทับ Google ถ้าทะเบียนตรงกัน)
-      const mergedStudents = [...googleData];
-      supabaseStudents.forEach(supStu => {
-        const index = mergedStudents.findIndex(g => g.licensePlate === supStu.licensePlate);
-        if (index !== -1) {
-          mergedStudents[index] = supStu; // ใช้ข้อมูลจาก Supabase แทน
-        } else {
-          mergedStudents.push(supStu); // เพิ่มข้อมูลใหม่จาก Supabase
-        }
-      });
+      // รวมข้อมูล (Supabase อยู่บน Google อยู่ล่าง หรือผสานกัน)
+      // การแสดงผล: เอาข้อมูล Supabase ไว้ก่อนเพื่อให้เห็นอันที่แก้ไขได้ง่ายๆ
+      setStudents([...supabaseStudents, ...googleData]);
 
-      setStudents(mergedStudents);
-
-      // 4. ดึงประวัติคะแนน
+      // 3. ดึงประวัติคะแนน
       const { data: recData } = await supabase.from('score_records').select('*').order('created_at', { ascending: false });
       if (recData) setScoreRecords(recData);
 
@@ -169,7 +140,6 @@ const ScoreManagement = () => {
     return 100 + studentRecords.reduce((sum, r) => sum + r.score_change, 0);
   };
 
-  // --- จัดการคะแนน (เพิ่ม) ---
   const handleSaveScore = async () => {
     const finalReason = selectedReason === "อื่นๆ (ระบุเอง)" ? otherReason : selectedReason;
     if (!selectedStudent || scoreChange === 0 || !finalReason.trim()) return;
@@ -189,37 +159,53 @@ const ScoreManagement = () => {
       setScoreDialogOpen(false);
       setScoreChange(0);
       setOtherReason('');
-      fetchData(); // รีโหลดเพื่ออัปเดตตารางประวัติ
+      // รีโหลดเฉพาะประวัติ
+      const { data } = await supabase.from('score_records').select('*').order('created_at', { ascending: false });
+      if (data) setScoreRecords(data);
     }
   };
 
-  // --- จัดการประวัติคะแนน (แก้ไข/ลบ) ---
-  const handleUpdateRecord = async () => {
-    if (!editingRecord) return;
-    const { error } = await supabase.from('score_records').update({
-      score_change: editingRecord.score_change,
-      reason: editingRecord.reason
-    }).eq('id', editingRecord.id);
+  // --- ฟังก์ชันลบข้อมูล (Handle Delete) ---
+  const handleDeleteStudent = async (student: Student) => {
+    // กรณีที่ 1: ข้อมูลมาจาก Google Sheet
+    if (student.source === 'google') {
+      toast({ 
+        title: "ลบไม่ได้", 
+        description: "ข้อมูลนี้ดึงมาจาก Google Sheets กรุณาไปลบที่ไฟล์ต้นฉบับ", 
+        variant: "destructive" 
+      });
+      return;
+    }
 
-    if (error) toast({ title: "แก้ไขผิดพลาด", variant: "destructive" });
-    else {
-      toast({ title: "แก้ไขประวัติสำเร็จ" });
-      setEditScoreDialogOpen(false);
-      fetchData();
+    // กรณีที่ 2: ข้อมูลมาจาก Supabase (ลบได้)
+    if (!confirm(`ยืนยันการลบข้อมูลของ ${student.name}?`)) return;
+    
+    const { error } = await supabase.from('motorcycles').delete().eq('id', student.id);
+    if (error) {
+      toast({ title: "ลบไม่สำเร็จ", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "ลบข้อมูลเรียบร้อย" });
+      fetchData(); // โหลดข้อมูลใหม่
     }
   };
 
-  const handleDeleteRecord = async (id: string) => {
-    if (!confirm("ยืนยันการลบประวัติรายการนี้? คะแนนจะถูกคำนวณใหม่")) return;
-    const { error } = await supabase.from('score_records').delete().eq('id', id);
-    if (error) toast({ title: "ลบผิดพลาด", variant: "destructive" });
-    else {
-      toast({ title: "ลบประวัติเรียบร้อย" });
-      fetchData();
+  // --- ฟังก์ชันลบประวัติคะแนน (Handle Delete History) ---
+  const handleDeleteHistory = async (recordId: string) => {
+    if (!confirm("ยืนยันการลบประวัติรายการนี้? คะแนนจะถูกคำนวณใหม่ทันที")) return;
+
+    const { error } = await supabase.from('score_records').delete().eq('id', recordId);
+    
+    if (error) {
+      toast({ title: "ลบประวัติไม่สำเร็จ", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "ลบประวัติเรียบร้อย", description: "คะแนนถูกคำนวณใหม่แล้ว" });
+      // รีโหลดประวัติ
+      const { data } = await supabase.from('score_records').select('*').order('created_at', { ascending: false });
+      if (data) setScoreRecords(data);
     }
   };
 
-  // --- จัดการข้อมูลนักเรียน (CRUD) ---
+  // --- ฟังก์ชันบันทึกข้อมูลนักเรียน (CRUD) ---
   const handleSaveStudent = async () => {
     const payload = {
       owner_name: studentForm.name,
@@ -242,20 +228,6 @@ const ScoreManagement = () => {
     else {
       toast({ title: isEditing ? "แก้ไขข้อมูลสำเร็จ" : "เพิ่มข้อมูลสำเร็จ" });
       setCrudDialogOpen(false);
-      fetchData();
-    }
-  };
-
-  const handleDeleteStudent = async (student: Student) => {
-    if (student.source === 'google') {
-      toast({ title: "ไม่สามารถลบข้อมูลจาก Google Sheet", description: "กรุณาลบที่ต้นทาง Google Sheets", variant: "destructive" });
-      return;
-    }
-    if (!confirm("ยืนยันการลบข้อมูลนี้?")) return;
-    const { error } = await supabase.from('motorcycles').delete().eq('id', student.id);
-    if (error) toast({ title: "ลบไม่สำเร็จ", variant: "destructive" });
-    else {
-      toast({ title: "ลบข้อมูลเรียบร้อย" });
       fetchData();
     }
   };
@@ -283,7 +255,7 @@ const ScoreManagement = () => {
             </Button>
           )}
           <Button size="sm" variant="outline" onClick={fetchData} title="รีโหลด"><RefreshCw className="h-4 w-4" /></Button>
-          <Button size="sm" variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" /> รายงาน A4</Button>
+          <Button size="sm" variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" /> A4</Button>
         </div>
       </nav>
 
@@ -311,7 +283,7 @@ const ScoreManagement = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Table: Student List */}
+          {/* Main Table */}
           <div className="lg:col-span-2 space-y-6">
             <Card className="border-none shadow-sm">
               <CardHeader><CardTitle className="text-lg flex items-center text-slate-700"><Search className="h-5 w-5 mr-2 text-blue-500" /> ค้นหาเพื่อจัดการคะแนน</CardTitle></CardHeader>
@@ -324,19 +296,24 @@ const ScoreManagement = () => {
                       {filteredStudents.slice(0, 10).map((student, idx) => (
                         <TableRow key={idx}>
                           <TableCell className="font-medium">
-                            {student.name} <span className="text-xs text-slate-400">({student.source === 'google' ? 'Google' : 'DB'})</span>
+                            {student.name} <span className="text-[10px] text-slate-400 px-1 border rounded">{student.source === 'google' ? 'Google' : 'DB'}</span>
                           </TableCell>
                           <TableCell>{student.licensePlate}</TableCell>
-                          <TableCell className="text-center font-bold">
-                            <span className={calculateTotalScore(student.licensePlate) < 100 ? 'text-red-500' : 'text-green-600'}>{calculateTotalScore(student.licensePlate)}</span>
-                          </TableCell>
+                          <TableCell className="text-center font-bold"><span className={calculateTotalScore(student.licensePlate) < 100 ? 'text-red-500' : 'text-green-600'}>{calculateTotalScore(student.licensePlate)}</span></TableCell>
                           <TableCell className="text-right flex justify-end gap-2">
+                            {/* ปุ่มจัดการคะแนน */}
                             <Button size="sm" variant="outline" onClick={() => { setSelectedStudent(student); setScoreDialogOpen(true); }}><Plus className="h-4 w-4"/></Button>
+                            
+                            {/* ปุ่มแก้ไข/ลบ (เฉพาะ Super Admin และ ข้อมูลจาก DB) */}
                             {isSuperAdmin && student.source === 'supabase' && (
                               <>
                                 <Button size="sm" variant="ghost" className="text-blue-600" onClick={() => { setStudentForm(student); setIsEditing(true); setCrudDialogOpen(true); }}><Edit className="h-4 w-4"/></Button>
                                 <Button size="sm" variant="ghost" className="text-red-600" onClick={() => handleDeleteStudent(student)}><Trash2 className="h-4 w-4"/></Button>
                               </>
+                            )}
+                            {/* ถ้าเป็น Google ลบไม่ได้ แต่แสดงปุ่มจางๆ ให้รู้ */}
+                            {isSuperAdmin && student.source === 'google' && (
+                              <Button size="sm" variant="ghost" className="text-slate-300 cursor-not-allowed" onClick={() => handleDeleteStudent(student)}><XCircle className="h-4 w-4"/></Button>
                             )}
                           </TableCell>
                         </TableRow>
@@ -348,26 +325,28 @@ const ScoreManagement = () => {
             </Card>
           </div>
 
-          {/* History Panel */}
+          {/* History & CRUD History */}
           <div className="space-y-6">
             <Card className="border-none shadow-sm">
               <CardHeader className="border-b"><CardTitle className="text-md flex items-center text-slate-700"><History className="h-4 w-4 mr-2 text-indigo-500" /> ประวัติ 10 รายการล่าสุด</CardTitle></CardHeader>
               <CardContent className="p-0 max-h-[600px] overflow-y-auto">
                 <div className="divide-y">
                   {scoreRecords.slice(0, 10).map((record) => (
-                    <div key={record.id} className="p-4 hover:bg-slate-50 transition-colors group relative">
+                    <div key={record.id} className="p-4 hover:bg-slate-50 transition-colors group">
                       <div className="flex justify-between items-start mb-1">
                         <span className="font-bold text-sm text-slate-800">{record.student_name}</span>
                         <span className={`text-xs font-bold px-2 py-0.5 rounded ${record.score_change < 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>{record.score_change > 0 ? '+' : ''}{record.score_change}</span>
                       </div>
                       <p className="text-xs text-slate-500">{record.reason}</p>
+                      
                       <div className="flex justify-between items-center mt-2">
                         <p className="text-[10px] text-slate-300">{new Date(record.created_at).toLocaleString('th-TH')}</p>
-                        {/* ปุ่มลบ/แก้ไข ประวัติ (เฉพาะ Super Admin) */}
+                        {/* ปุ่มลบประวัติ (เฉพาะ Super Admin) */}
                         {isSuperAdmin && (
-                          <div className="hidden group-hover:flex gap-2">
-                            <Button size="icon" variant="ghost" className="h-6 w-6 text-blue-500" onClick={() => { setEditingRecord(record); setEditScoreDialogOpen(true); }}><Edit className="h-3 w-3"/></Button>
-                            <Button size="icon" variant="ghost" className="h-6 w-6 text-red-500" onClick={() => handleDeleteRecord(record.id)}><Trash2 className="h-3 w-3"/></Button>
+                          <div className="hidden group-hover:block animate-in fade-in">
+                            <Button size="icon" variant="ghost" className="h-6 w-6 text-red-500 hover:bg-red-50" onClick={() => handleDeleteHistory(record.id)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           </div>
                         )}
                       </div>
@@ -380,7 +359,7 @@ const ScoreManagement = () => {
         </div>
       </div>
 
-      {/* --- Modal จัดการคะแนน (เพิ่ม) --- */}
+      {/* Modal - Score */}
       <Dialog open={scoreDialogOpen} onOpenChange={setScoreDialogOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>บันทึกคะแนน: {selectedStudent?.name}</DialogTitle></DialogHeader>
@@ -395,22 +374,7 @@ const ScoreManagement = () => {
         </DialogContent>
       </Dialog>
 
-      {/* --- Modal แก้ไขประวัติคะแนน (History CRUD) --- */}
-      <Dialog open={editScoreDialogOpen} onOpenChange={setEditScoreDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>แก้ไขประวัติคะแนน</DialogTitle></DialogHeader>
-          {editingRecord && (
-            <div className="space-y-4 py-4">
-              <p className="text-sm text-slate-500">นักเรียน: {editingRecord.student_name}</p>
-              <Input type="number" value={editingRecord.score_change} onChange={e => setEditingRecord({...editingRecord, score_change: Number(e.target.value)})} />
-              <Textarea value={editingRecord.reason} onChange={e => setEditingRecord({...editingRecord, reason: e.target.value})} />
-              <Button className="w-full bg-orange-500 hover:bg-orange-600" onClick={handleUpdateRecord}>บันทึกการแก้ไข</Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* --- Modal เพิ่ม/แก้ไข ข้อมูลนักเรียน --- */}
+      {/* Modal - Add/Edit Student */}
       <Dialog open={crudDialogOpen} onOpenChange={setCrudDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader><DialogTitle>{isEditing ? 'แก้ไขข้อมูลนักเรียน' : 'เพิ่มข้อมูลรถใหม่'}</DialogTitle></DialogHeader>
@@ -432,34 +396,175 @@ const ScoreManagement = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Printable Report */}
-      <div id="printable-report" className="hidden p-8 bg-white text-black">
-        <h1 className="text-2xl font-bold text-center mb-4">รายงานสรุปคะแนนความประพฤติ</h1>
-        <table className="w-full border-collapse border border-black text-xs">
+      {/* Printable Report (Official A4 Format - Centered Logo & Tidy Signatures) */}
+      <div id="printable-report" className="hidden print:block bg-white text-black p-8 font-serif">
+        <style>
+          {`
+            @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+            
+            #printable-report {
+              font-family: 'Sarabun', sans-serif;
+              line-height: 1.6;
+              color: #000;
+            }
+
+            /* จัดหัวกระดาษ: โลโก้อยู่กลาง ข้อความอยู่กลาง */
+            .a4-header {
+              text-align: center;
+              margin-bottom: 30px;
+            }
+            .school-logo {
+              width: 100px; /* ปรับขนาดให้พอดี */
+              height: auto;
+              margin: 0 auto 15px auto; /* จัดกึ่งกลางและเว้นระยะห่างด้านล่าง */
+              display: block;
+            }
+            .header-text h1 { font-size: 24px; font-weight: bold; margin: 0; }
+            .header-text h2 { font-size: 20px; font-weight: bold; margin: 5px 0; }
+            .header-text p { font-size: 16px; margin: 0; }
+
+            /* ตารางข้อมูล */
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 20px;
+            }
+            th, td {
+              border: 1px solid #000;
+              padding: 10px 5px;
+              font-size: 14px;
+              vertical-align: top;
+            }
+            th {
+              background-color: #f0f0f0 !important; /* บังคับสีพื้นหลังตอนพิมพ์ */
+              font-weight: bold;
+              text-align: center;
+              -webkit-print-color-adjust: exact; 
+            }
+
+            /* ส่วนลงชื่อ: จัดให้เป็นระเบียบ */
+            .sign-section {
+              margin-top: 60px;
+              display: flex;
+              justify-content: space-around; /* กระจายซ้ายขวาให้สมดุล */
+              align-items: flex-start;
+              page-break-inside: avoid; /* ป้องกันไม่ให้ส่วนนี้ถูกตัดข้ามหน้า */
+            }
+            .sign-box {
+              text-align: center;
+              width: 300px;
+            }
+            .sign-line {
+              border-bottom: 1px dotted #000;
+              display: inline-block;
+              width: 200px; /* ความยาวเส้นลงชื่อ */
+              height: 1px;
+              margin: 30px auto 10px auto; /* ระยะห่างสำหรับเซ็น */
+            }
+            .position-text {
+              margin-top: 5px;
+              font-size: 14px;
+            }
+
+            /* ตั้งค่าหน้ากระดาษ */
+            @media print {
+              @page {
+                size: A4;
+                margin: 2cm; /* ขอบกระดาษมาตรฐานราชการ */
+              }
+              body * { visibility: hidden; }
+              #printable-report, #printable-report * { visibility: visible; }
+              #printable-report {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+              }
+            }
+          `}
+        </style>
+
+        {/* ส่วนหัวรายงาน (ปรับใหม่: โลโก้กลาง) */}
+        <div className="a4-header">
+          <img 
+            src="https://img5.pic.in.th/file/secure-sv1/ASW-Logo-1.png" 
+            alt="School Logo" 
+            className="school-logo" 
+          />
+          <div className="header-text">
+            <h1>บันทึกข้อความ</h1>
+            <h2>รายงานสรุปคะแนนความประพฤติ (ทะเบียนรถจักรยานยนต์)</h2>
+            <p>โรงเรียนอาจสามารถวิทยา อำเภออาจสามารถ จังหวัดร้อยเอ็ด</p>
+            <p>ประจำวันที่ {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          </div>
+        </div>
+
+        {/* ส่วนสรุปสถิติ */}
+        <div className="mb-6 border-t border-b border-black py-4">
+          <p className="text-lg">
+            <strong>เรื่อง:</strong> สรุปสถิติการหักคะแนนความประพฤตินักเรียน (งานจราจร)
+          </p>
+          <div className="flex justify-between mt-2 text-md">
+            <span>จำนวนรายการทั้งหมด: <strong>{scoreRecords.length}</strong> รายการ</span>
+            <span>รวมคะแนนที่ถูกหัก: <strong className="text-red-600">-{stats.totalDeducted}</strong> คะแนน</span>
+          </div>
+        </div>
+
+        {/* ตารางข้อมูล */}
+        <table>
           <thead>
-            <tr className="bg-gray-100">
-              <th className="border border-black p-2">วันที่</th>
-              <th className="border border-black p-2">ชื่อนักเรียน</th>
-              <th className="border border-black p-2">ชั้น</th>
-              <th className="border border-black p-2">ทะเบียน</th>
-              <th className="border border-black p-2">คะแนน</th>
-              <th className="border border-black p-2">เหตุผล</th>
+            <tr>
+              <th style={{ width: '8%' }}>ลำดับ</th>
+              <th style={{ width: '15%' }}>วัน/เวลา</th>
+              <th style={{ width: '22%' }}>ชื่อ-สกุล</th>
+              <th style={{ width: '10%' }}>ชั้น</th>
+              <th style={{ width: '15%' }}>ทะเบียน</th>
+              <th style={{ width: '10%' }}>คะแนน</th>
+              <th style={{ width: '20%' }}>เหตุผล</th>
             </tr>
           </thead>
           <tbody>
             {scoreRecords.map((r, i) => (
               <tr key={i}>
-                <td className="border border-black p-2">{new Date(r.created_at).toLocaleDateString('th-TH')}</td>
-                <td className="border border-black p-2">{r.student_name}</td>
-                <td className="border border-black p-2 text-center">{r.student_class}</td>
-                <td className="border border-black p-2 text-center">{r.license_plate}</td>
-                <td className="border border-black p-2 text-center">{r.score_change}</td>
-                <td className="border border-black p-2">{r.reason}</td>
+                <td className="text-center">{i + 1}</td>
+                <td className="text-center">{new Date(r.created_at).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })} <br/> {new Date(r.created_at).toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}</td>
+                <td>{r.student_name}</td>
+                <td className="text-center">{r.student_class}</td>
+                <td className="text-center">{r.license_plate}</td>
+                <td className="text-center font-bold">
+                  {r.score_change > 0 ? `+${r.score_change}` : r.score_change}
+                </td>
+                <td>{r.reason}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <div className="mt-20 flex justify-between px-10"><div className="text-center"><p className="mb-16">ลงชื่อ......................</p><p>ผู้รายงาน</p></div><div className="text-center"><p className="mb-16">ลงชื่อ......................</p><p>หัวหน้าฝ่าย</p></div></div>
+
+        {/* ส่วนลงชื่อ (ปรับใหม่: เป็นระเบียบ) */}
+        <div className="sign-section">
+          {/* ผู้รายงาน */}
+          <div className="sign-box">
+            <div className="sign-line"></div>
+            <p>({user?.email?.split('@')[0] || '....................................'})</p>
+            <p className="font-bold">ผู้รายงานข้อมูล</p>
+            <p className="position-text">ตำแหน่ง ครูเวรประจำวัน</p>
+          </div>
+
+          {/* หัวหน้าฝ่าย */}
+          <div className="sign-box">
+            <div className="sign-line"></div>
+            <p>(.......................................................)</p>
+            <p className="font-bold">หัวหน้าฝ่ายกิจการนักเรียน</p>
+            <p className="position-text">ผู้ตรวจทาน</p>
+          </div>
+        </div>
+        
+        {/* หมายเหตุท้ายกระดาษ */}
+        <div className="mt-12 text-[10px] text-gray-500 text-right">
+          พิมพ์จากระบบสารสนเทศ ASW-Moto เมื่อ {new Date().toLocaleString('th-TH')}
+        </div>
       </div>
     </div>
   );
