@@ -9,14 +9,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { 
   ArrowLeft, Plus, Minus, Search, History, Loader2, 
-  Users, AlertCircle, Clock, Printer, Edit, Trash2, UserPlus
+  Users, AlertCircle, Clock, Printer, Edit, Trash2, UserPlus, RefreshCw
 } from 'lucide-react';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+
+// การตั้งค่า Google Sheets
+const GOOGLE_SHEET_ID = '1YqjDZXFLktWvwKg_2hY_kMGAhD69tmy6W4phpSfAMbM';
+const SHEET_NAME = 'DATA';
 
 const REASON_OPTIONS = [
   "ไม่สวมหมวกนิรภัย",
@@ -30,7 +34,7 @@ const REASON_OPTIONS = [
 ];
 
 interface Student {
-  id?: string;
+  id?: string; // ID อาจจะไม่มีถ้ามาจาก Google Sheet
   name: string;
   class: string;
   brand: string;
@@ -54,37 +58,55 @@ const ScoreManagement = () => {
   const [otherReason, setOtherReason] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // State สำหรับจัดการข้อมูล Student (CRUD)
-  const [crudDialogOpen, setCrudDialogOpen] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [studentForm, setStudentForm] = useState<Student>({
-    name: '', class: '', brand: '', model: '', color: '', licensePlate: ''
-  });
-
   const isSuperAdmin = hasRole('super_admin') || user?.email === 'winawathns11@gmail.com';
   const isAdmin = hasRole('admin') || isSuperAdmin;
+
+  // ฟังก์ชันแปลงวันที่เป็นชื่อห้อง (สำหรับ Google Sheets)
+  const fixClassroom = (val: string) => {
+    if (!val) return '-';
+    const thaiMonths: { [key: string]: number } = {
+      'ม.ค.': 1, 'ก.พ.': 2, 'มี.ค.': 3, 'เม.ย.': 4, 'พ.ค.': 5, 'มิ.ย.': 6,
+      'ก.ค.': 7, 'ส.ค.': 8, 'ก.ย.': 9, 'ต.ค.': 10, 'พ.ย.': 11, 'ธ.ค.': 12
+    };
+    const parts = val.split('-');
+    if (parts.length === 2 && thaiMonths[parts[1]]) {
+      return `ม.${thaiMonths[parts[1]]}/${parts[0]}`;
+    }
+    return val;
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      // ดึงข้อมูลจากตาราง motorcycles ใน Supabase โดยตรง (แทน Google Sheets เพื่อให้ CRUD ทำงานได้)
-      const { data: motoData, error: motoError } = await supabase.from('motorcycles').select('*');
-      const { data: recData, error: recError } = await supabase.from('score_records').select('*').order('created_at', { ascending: false });
-
-      if (motoData) {
-        const formatted = motoData.map(m => ({
-          id: m.id,
-          name: m.owner_name,
-          class: m.classroom,
-          brand: m.brand,
-          model: m.model,
-          color: m.color,
-          licensePlate: m.license_plate
-        }));
-        setStudents(formatted);
+      // 1. ดึงข้อมูลนักเรียนจาก Google Sheet
+      const sheetUrl = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json&sheet=${SHEET_NAME}`;
+      const response = await fetch(sheetUrl);
+      const text = await response.text();
+      const jsonString = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?/);
+      
+      let sheetStudents: Student[] = [];
+      if (jsonString && jsonString[1]) {
+        const json = JSON.parse(jsonString[1]);
+        sheetStudents = json.table.rows.slice(1).map((row: any) => ({
+          name: row.c[1]?.v || '',
+          class: fixClassroom(row.c[2]?.v || ''),
+          brand: row.c[3]?.v || '',
+          model: row.c[4]?.v || '',
+          color: row.c[5]?.v || '',
+          licensePlate: row.c[6]?.v || '',
+        })).filter((s: any) => s.name);
       }
+
+      // 2. ดึงประวัติคะแนนจาก Supabase
+      const { data: recData } = await supabase.from('score_records').select('*').order('created_at', { ascending: false });
+
+      setStudents(sheetStudents);
       if (recData) setScoreRecords(recData);
-    } catch (error) { console.error(error); }
+
+    } catch (error) { 
+      console.error('Error fetching data:', error);
+      toast({ title: "โหลดข้อมูลไม่สำเร็จ", description: "กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต", variant: "destructive" });
+    }
     setLoading(false);
   };
 
@@ -100,12 +122,12 @@ const ScoreManagement = () => {
     return { todayCases, totalDeducted };
   }, [scoreRecords]);
 
+  // คำนวณคะแนนรวม (100 + ประวัติจาก Supabase)
   const calculateTotalScore = (licensePlate: string) => {
     const studentRecords = scoreRecords.filter(r => r.license_plate === licensePlate);
     return 100 + studentRecords.reduce((sum, r) => sum + r.score_change, 0);
   };
 
-  // --- ระบบจัดการคะแนน ---
   const handleSaveScore = async () => {
     const finalReason = selectedReason === "อื่นๆ (ระบุเอง)" ? otherReason : selectedReason;
     if (!selectedStudent || scoreChange === 0 || !finalReason.trim()) return;
@@ -123,57 +145,11 @@ const ScoreManagement = () => {
     else {
       toast({ title: "บันทึกคะแนนสำเร็จ" });
       setDialogOpen(false);
-      fetchData();
-    }
-  };
-
-  // --- ระบบ CRUD (เพิ่ม/แก้ไข/ลบ) ---
-  const handleOpenAdd = () => {
-    setIsEditing(false);
-    setStudentForm({ name: '', class: '', brand: '', model: '', color: '', licensePlate: '' });
-    setCrudDialogOpen(true);
-  };
-
-  const handleOpenEdit = (s: Student) => {
-    setIsEditing(true);
-    setStudentForm(s);
-    setCrudDialogOpen(true);
-  };
-
-  const handleSaveStudent = async () => {
-    const payload = {
-      owner_name: studentForm.name,
-      classroom: studentForm.class,
-      brand: studentForm.brand,
-      model: studentForm.model,
-      color: studentForm.color,
-      license_plate: studentForm.licensePlate
-    };
-
-    let error;
-    if (isEditing && studentForm.id) {
-      const { error: err } = await supabase.from('motorcycles').update(payload).eq('id', studentForm.id);
-      error = err;
-    } else {
-      const { error: err } = await supabase.from('motorcycles').insert([payload]);
-      error = err;
-    }
-
-    if (error) toast({ title: "เกิดข้อผิดพลาด", description: error.message, variant: "destructive" });
-    else {
-      toast({ title: isEditing ? "แก้ไขข้อมูลสำเร็จ" : "เพิ่มข้อมูลสำเร็จ" });
-      setCrudDialogOpen(false);
-      fetchData();
-    }
-  };
-
-  const handleDeleteStudent = async (id: string) => {
-    if (!confirm("คุณมั่นใจหรือไม่ที่จะลบข้อมูลนี้? ข้อมูลคะแนนที่เกี่ยวข้องจะไม่ถูกลบแต่จะไม่แสดงผลเชื่อมโยง")) return;
-    const { error } = await supabase.from('motorcycles').delete().eq('id', id);
-    if (error) toast({ title: "ลบไม่สำเร็จ", description: error.message, variant: "destructive" });
-    else {
-      toast({ title: "ลบข้อมูลเรียบร้อยแล้ว" });
-      fetchData();
+      setScoreChange(0);
+      setOtherReason('');
+      // รีโหลดเฉพาะประวัติคะแนนเพื่อให้เร็วขึ้น
+      const { data } = await supabase.from('score_records').select('*').order('created_at', { ascending: false });
+      if (data) setScoreRecords(data);
     }
   };
 
@@ -186,7 +162,7 @@ const ScoreManagement = () => {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] pb-20">
-      <style>{`@media print {.no-print { display: none !important; } #printable-report { display: block !important; }}`}</style>
+      <style>{`@media print {.no-print { display: none !important; } #printable-report { display: block !important; width: 100%; background: white; } body { background: white; }}`}</style>
 
       <nav className="bg-white border-b sticky top-0 z-50 px-6 h-16 flex items-center justify-between shadow-sm no-print">
         <div className="flex items-center gap-4">
@@ -194,12 +170,13 @@ const ScoreManagement = () => {
           <h1 className="font-bold text-slate-800">ระบบจัดการคะแนน</h1>
         </div>
         <div className="flex gap-2">
-          {isSuperAdmin && (
-            <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={handleOpenAdd}>
-              <UserPlus className="h-4 w-4 mr-2" /> เพิ่มข้อมูลรถใหม่
-            </Button>
-          )}
-          <Button size="sm" variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" /> พิมพ์รายงาน A4</Button>
+          {/* ปุ่ม Reload ข้อมูล */}
+          <Button size="sm" variant="outline" onClick={fetchData} title="รีโหลดข้อมูลจาก Sheet">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => window.print()}>
+            <Printer className="h-4 w-4 mr-2" /> พิมพ์รายงาน A4
+          </Button>
         </div>
       </nav>
 
@@ -208,7 +185,7 @@ const ScoreManagement = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="border-none shadow-sm bg-blue-600 text-white">
             <CardContent className="pt-6 flex items-center justify-between">
-              <div><p className="text-blue-100 text-sm">นักเรียนทั้งหมด</p><h3 className="text-3xl font-bold">{students.length}</h3></div>
+              <div><p className="text-blue-100 text-sm">นักเรียนในระบบ (Sheet)</p><h3 className="text-3xl font-bold">{students.length}</h3></div>
               <Users className="h-10 w-10 opacity-20" />
             </CardContent>
           </Card>
@@ -227,12 +204,15 @@ const ScoreManagement = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* ตารางจัดการข้อมูล */}
+          {/* ตารางค้นหาและจัดการ */}
           <div className="lg:col-span-2 space-y-6">
             <Card className="border-none shadow-sm">
-              <CardHeader><CardTitle className="text-lg flex items-center text-slate-700"><Search className="h-5 w-5 mr-2 text-blue-500" /> รายชื่อและคะแนน</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-lg flex items-center text-slate-700"><Search className="h-5 w-5 mr-2 text-blue-500" /> ค้นหาเพื่อจัดการคะแนน</CardTitle></CardHeader>
               <CardContent>
-                <Input placeholder="ค้นหาชื่อ หรือทะเบียน..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="mb-4" />
+                <div className="relative mb-4">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input placeholder="ค้นหาชื่อ หรือทะเบียน..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 h-12" />
+                </div>
                 <div className="border rounded-lg overflow-hidden">
                   <Table>
                     <TableHeader className="bg-slate-50">
@@ -244,42 +224,39 @@ const ScoreManagement = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredStudents.map((student, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell className="font-medium">{student.name} ({student.class})</TableCell>
-                          <TableCell>{student.licensePlate}</TableCell>
-                          <TableCell className="text-center font-bold">
-                            <span className={calculateTotalScore(student.licensePlate) < 100 ? 'text-red-500' : 'text-green-600'}>
-                              {calculateTotalScore(student.licensePlate)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right flex justify-end gap-2">
-                            {/* ปุ่มจัดการคะแนน */}
-                            <Dialog open={dialogOpen && selectedStudent?.licensePlate === student.licensePlate} onOpenChange={setDialogOpen}>
-                              <DialogTrigger asChild><Button size="sm" variant="outline" onClick={() => setSelectedStudent(student)}><Plus className="h-4 w-4"/></Button></DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader><DialogTitle>บันทึกคะแนน: {student.name}</DialogTitle></DialogHeader>
-                                <div className="space-y-4 py-4">
-                                  <Input type="number" placeholder="แต้ม +/-" value={scoreChange} onChange={e => setScoreChange(Number(e.target.value))} />
-                                  <select className="w-full h-10 px-3 rounded-md border" value={selectedReason} onChange={e => setSelectedReason(e.target.value)}>
-                                    {REASON_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                  </select>
-                                  {selectedReason === "อื่นๆ (ระบุเอง)" && <Textarea value={otherReason} onChange={e => setOtherReason(e.target.value)} placeholder="ระบุเหตุผล..." />}
-                                  <Button className="w-full bg-blue-600" onClick={handleSaveScore}>ยืนยันบันทึก</Button>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
-
-                            {/* ปุ่ม CRUD เฉพาะ Super Admin */}
-                            {isSuperAdmin && (
-                              <>
-                                <Button size="sm" variant="ghost" className="text-blue-600" onClick={() => handleOpenEdit(student)}><Edit className="h-4 w-4"/></Button>
-                                <Button size="sm" variant="ghost" className="text-red-600" onClick={() => student.id && handleDeleteStudent(student.id)}><Trash2 className="h-4 w-4"/></Button>
-                              </>
-                            )}
-                          </TableCell>
+                      {filteredStudents.length > 0 ? (
+                        filteredStudents.slice(0, 8).map((student, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-medium">{student.name} ({student.class})</TableCell>
+                            <TableCell>{student.licensePlate}</TableCell>
+                            <TableCell className="text-center font-bold">
+                              <span className={calculateTotalScore(student.licensePlate) < 100 ? 'text-red-500' : 'text-green-600'}>
+                                {calculateTotalScore(student.licensePlate)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Dialog open={dialogOpen && selectedStudent?.licensePlate === student.licensePlate} onOpenChange={setDialogOpen}>
+                                <DialogTrigger asChild><Button size="sm" className="bg-slate-900" onClick={() => setSelectedStudent(student)}>จัดการคะแนน</Button></DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader><DialogTitle>บันทึกคะแนน: {student.name}</DialogTitle></DialogHeader>
+                                  <div className="space-y-4 py-4">
+                                    <Input type="number" placeholder="แต้ม +/-" value={scoreChange} onChange={e => setScoreChange(Number(e.target.value))} />
+                                    <select className="w-full h-10 px-3 rounded-md border" value={selectedReason} onChange={e => setSelectedReason(e.target.value)}>
+                                      {REASON_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    </select>
+                                    {selectedReason === "อื่นๆ (ระบุเอง)" && <Textarea value={otherReason} onChange={e => setOtherReason(e.target.value)} placeholder="ระบุเหตุผล..." />}
+                                    <Button className="w-full bg-blue-600" onClick={handleSaveScore}>ยืนยัน</Button>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center py-8 text-slate-400">ไม่พบข้อมูลที่ค้นหา</TableCell>
                         </TableRow>
-                      ))}
+                      )}
                     </TableBody>
                   </Table>
                 </div>
@@ -290,73 +267,34 @@ const ScoreManagement = () => {
           {/* ประวัติล่าสุด */}
           <div className="space-y-6">
             <Card className="border-none shadow-sm">
-              <CardHeader className="border-b"><CardTitle className="text-md flex items-center"><History className="h-4 w-4 mr-2" /> 10 รายการล่าสุด</CardTitle></CardHeader>
+              <CardHeader className="border-b"><CardTitle className="text-md flex items-center text-slate-700"><History className="h-4 w-4 mr-2 text-indigo-500" /> 10 รายการล่าสุด</CardTitle></CardHeader>
               <CardContent className="p-0 max-h-[500px] overflow-y-auto">
-                {scoreRecords.slice(0, 10).map((record) => (
-                  <div key={record.id} className="p-4 border-b last:border-0">
-                    <div className="flex justify-between font-bold text-sm"><span>{record.student_name}</span><span className={record.score_change < 0 ? 'text-red-500' : 'text-green-500'}>{record.score_change > 0 ? '+' : ''}{record.score_change}</span></div>
-                    <p className="text-xs text-slate-500 mt-1">{record.reason}</p>
-                    <p className="text-[10px] text-slate-300 mt-1">{new Date(record.created_at).toLocaleString('th-TH')}</p>
-                  </div>
-                ))}
+                <div className="divide-y">
+                  {scoreRecords.slice(0, 10).map((record) => (
+                    <div key={record.id} className="p-4 hover:bg-slate-50 transition-colors">
+                      <div className="flex justify-between items-start mb-1"><span className="font-bold text-sm">{record.student_name}</span><span className={record.score_change < 0 ? 'text-red-500' : 'text-green-500'}>{record.score_change > 0 ? '+' : ''}{record.score_change}</span></div>
+                      <p className="text-xs text-slate-500 mt-1">{record.reason}</p>
+                      <p className="text-[10px] text-slate-300 mt-1">{new Date(record.created_at).toLocaleString('th-TH')}</p>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </div>
         </div>
       </div>
 
-      {/* Modal สำหรับ CRUD Student */}
-      <Dialog open={crudDialogOpen} onOpenChange={setCrudDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>{isEditing ? 'แก้ไขข้อมูลนักเรียน' : 'เพิ่มข้อมูลรถจักรยานยนต์ใหม่'}</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">ชื่อ-นามสกุล</label>
-              <Input value={studentForm.name} onChange={e => setStudentForm({...studentForm, name: e.target.value})} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">ชั้นเรียน (เช่น ม.1/1)</label>
-                <Input value={studentForm.class} onChange={e => setStudentForm({...studentForm, class: e.target.value})} />
-              </div>
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">ทะเบียนรถ</label>
-                <Input value={studentForm.licensePlate} onChange={e => setStudentForm({...studentForm, licensePlate: e.target.value})} />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="grid gap-2 col-span-1">
-                <label className="text-sm font-medium">ยี่ห้อ</label>
-                <Input value={studentForm.brand} onChange={e => setStudentForm({...studentForm, brand: e.target.value})} />
-              </div>
-              <div className="grid gap-2 col-span-1">
-                <label className="text-sm font-medium">รุ่น</label>
-                <Input value={studentForm.model} onChange={e => setStudentForm({...studentForm, model: e.target.value})} />
-              </div>
-              <div className="grid gap-2 col-span-1">
-                <label className="text-sm font-medium">สี</label>
-                <Input value={studentForm.color} onChange={e => setStudentForm({...studentForm, color: e.target.value})} />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCrudDialogOpen(false)}>ยกเลิก</Button>
-            <Button className="bg-blue-600" onClick={handleSaveStudent}>บันทึกข้อมูล</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Printable Area */}
+      {/* Printable Area (รายงาน A4) */}
       <div id="printable-report" className="hidden p-8 bg-white text-black">
         <h1 className="text-2xl font-bold text-center mb-4">รายงานสรุปคะแนนความประพฤติ</h1>
+        <div className="text-center mb-8"><p className="text-sm">พิมพ์วันที่ {new Date().toLocaleDateString('th-TH')} {new Date().toLocaleTimeString('th-TH')}</p></div>
         <table className="w-full border-collapse border border-black text-xs">
           <thead>
-            <tr>
+            <tr className="bg-gray-100">
               <th className="border border-black p-2">วันที่</th>
               <th className="border border-black p-2">ชื่อนักเรียน</th>
               <th className="border border-black p-2">ชั้น</th>
+              <th className="border border-black p-2">ทะเบียน</th>
               <th className="border border-black p-2">คะแนน</th>
               <th className="border border-black p-2">เหตุผล</th>
             </tr>
@@ -367,12 +305,17 @@ const ScoreManagement = () => {
                 <td className="border border-black p-2">{new Date(r.created_at).toLocaleDateString('th-TH')}</td>
                 <td className="border border-black p-2">{r.student_name}</td>
                 <td className="border border-black p-2 text-center">{r.student_class}</td>
+                <td className="border border-black p-2 text-center">{r.license_plate}</td>
                 <td className="border border-black p-2 text-center">{r.score_change}</td>
                 <td className="border border-black p-2">{r.reason}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        <div className="mt-20 flex justify-between px-10">
+          <div className="text-center"><p className="mb-16">ลงชื่อ......................................</p><p>ผู้รายงาน</p></div>
+          <div className="text-center"><p className="mb-16">ลงชื่อ......................................</p><p>หัวหน้าฝ่าย</p></div>
+        </div>
       </div>
     </div>
   );
