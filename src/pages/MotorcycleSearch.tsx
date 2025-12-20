@@ -12,20 +12,31 @@ import { useAuth } from '@/hooks/useAuth';
 import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 
-// ฟังก์ชันแปลงลิงก์ Google Drive ให้เป็นลิงก์รูปภาพที่แสดงผลได้
 const getDriveImageUrl = (driveUrl: string) => {
   if (!driveUrl) return '';
-  // ถ้าเป็น Supabase URL หรือ URL ปกติอยู่แล้วให้คืนค่าเดิม
   if (driveUrl.startsWith('http') && !driveUrl.includes('drive.google.com')) return driveUrl;
-
   const regExp = /id=([^&]+)|d\/([^/]+)\//;
   const match = driveUrl.match(regExp);
   const fileId = match ? (match[1] || match[2]) : null;
-
-  if (fileId) {
-    return `https://lh3.googleusercontent.com/d/${fileId}=s800`; // ใช้ Server Google LH3 เพื่อโหลดรูปเร็วขึ้น
-  }
+  if (fileId) return `https://lh3.googleusercontent.com/d/${fileId}=s800`;
   return driveUrl;
+};
+
+// ฟังก์ชันช่วยตัดคำ CSV (รองรับกรณีมีเครื่องหมายลูกน้ำในข้อความ)
+const parseCSVLine = (text: string) => {
+  const result = [];
+  let start = 0;
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '"') {
+      inQuotes = !inQuotes;
+    } else if (text[i] === ',' && !inQuotes) {
+      result.push(text.substring(start, i).replace(/^"|"$/g, '').trim());
+      start = i + 1;
+    }
+  }
+  result.push(text.substring(start).replace(/^"|"$/g, '').trim());
+  return result;
 };
 
 const MotorcycleSearch = () => {
@@ -40,57 +51,54 @@ const MotorcycleSearch = () => {
   const [allMotorcyclesData, setAllMotorcyclesData] = useState<any[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  // Config Google Sheets
   const GOOGLE_SHEET_ID = '1YqjDZXFLktWvwKg_2hY_kMGAhD69tmy6W4phpSfAMbM';
-  const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY; // ตรวจสอบว่ามี Key นี้ใน .env
-  const GOOGLE_SHEET_RANGE = 'DATA!A:I';
-
-  // สิทธิ์การเข้าถึง (เปิด Public หรือจำกัดสิทธิ์แก้ตรงนี้)
+  
+  // สิทธิ์การเข้าถึง
   const canAccess = true;
 
-  // 1. ฟังก์ชันดึงจาก Google Sheets
- // 1. ฟังก์ชันดึงจาก Google Sheets (แบบไม่ต้องใช้ API Key)
+  // 1. ฟังก์ชันดึงจาก Google Sheets (แบบ CSV - เสถียรกว่า)
   const fetchGoogleSheetData = useCallback(async () => {
     if (!GOOGLE_SHEET_ID) return [];
     
-    // ใช้ URL แบบ Visualization Query (gviz) แทน API v4
-    const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json&sheet=DATA`;
+    // ใช้ URL แบบ Export CSV (ดึงแผ่นแรกเสมอ ไม่ต้องระบุชื่อ Sheet)
+    const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv`;
     
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error('Network response was not ok');
       
-      const text = await response.text();
-      // ตัดส่วนหัว google.visualization.Query.setResponse( ... ); ออกเพื่อให้ได้ JSON แท้ๆ
-      const jsonString = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);/);
-      
-      if (!jsonString || !jsonString[1]) return [];
-      
-      const json = JSON.parse(jsonString[1]);
-      const rows = json.table.rows;
+      const csvText = await response.text();
+      const rows = csvText.split('\n'); // แยกบรรทัด
 
-      if (!rows || rows.length === 0) return [];
+      if (rows.length <= 1) return [];
 
-      // Map ข้อมูล (ต้องระวัง Index ของ Column ให้ตรงกับ Sheet)
-      // c[0] = Timestamp, c[1] = ชื่อ, c[2] = ชั้น, c[3] = ยี่ห้อ, c[4] = สี, c[5] = ทะเบียน, c[6] = รูปหน้า, c[7] = รูปทะเบียน
-      return rows.map((row: any, index: number) => ({
-        id: `google-${index}`,
-        source: 'google',
-        timestamp: row.c[0]?.f || row.c[0]?.v || '',
-        fullName: row.c[1]?.v || '',
-        classGrade: row.c[2]?.v || '',
-        brandModel: row.c[3]?.v || '',
-        vehicleColor: row.c[4]?.v || '',
-        plateNumber: row.c[5]?.v || '',
-        frontPhotoUrl: row.c[6]?.v || '',
-        licensePlatePhotoUrl: row.c[7]?.v || ''
-      })).filter((item: any) => item.fullName && item.plateNumber); // กรองแถวว่าง
+      // map ข้อมูล (เริ่มที่ row 1 คือข้าม Header)
+      return rows.slice(1).map((rowString, index) => {
+        const cols = parseCSVLine(rowString); // ใช้ฟังก์ชันตัดคำพิเศษ
+        
+        // ตรวจสอบจำนวนคอลัมน์ว่ามีข้อมูลสำคัญครบไหม (Timestamp, ชื่อ, ชั้น, ทะเบียน)
+        if (cols.length < 6) return null;
+
+        return {
+          id: `google-${index}`,
+          source: 'google',
+          timestamp: cols[0] || '', // A: Timestamp
+          fullName: cols[1] || '',  // B: ชื่อ-สกุล
+          classGrade: cols[2] || '', // C: ชั้น
+          brandModel: cols[3] || '', // D: ยี่ห้อ
+          vehicleColor: cols[4] || '', // E: สี
+          plateNumber: cols[5] || '', // F: ทะเบียน (สำคัญ!)
+          frontPhotoUrl: cols[6] || '', // G: รูปหน้า
+          licensePlatePhotoUrl: cols[7] || '' // H: รูปทะเบียน
+        };
+      }).filter((item: any) => item && item.fullName && item.plateNumber); // กรองแถวว่างทิ้ง
 
     } catch (error) {
-      console.error("Google Sheet Error:", error);
+      console.error("Google Sheet CSV Error:", error);
       return [];
     }
   }, []);
+
   // 2. ฟังก์ชันดึงจาก Supabase
   const fetchSupabaseData = useCallback(async () => {
     try {
@@ -125,13 +133,14 @@ const MotorcycleSearch = () => {
       const loadAllData = async () => {
         setIsInitialLoading(true);
         
-        // ดึงข้อมูลพร้อมกัน 2 แหล่ง (Parallel Fetching)
         const [googleData, supabaseData] = await Promise.all([
           fetchGoogleSheetData(),
           fetchSupabaseData()
         ]);
 
-        // รวมข้อมูล (เอา Supabase ขึ้นก่อนเพราะใหม่กว่า)
+        console.log("Google Data:", googleData.length); // Debug ดูจำนวนข้อมูล
+        console.log("Supabase Data:", supabaseData.length);
+
         const combinedData = [...supabaseData, ...googleData];
         
         setAllMotorcyclesData(combinedData);
@@ -142,7 +151,6 @@ const MotorcycleSearch = () => {
     }
   }, [authLoading, fetchGoogleSheetData, fetchSupabaseData]);
 
-  // ตัวเลือกชั้นเรียน (คำนวณจากข้อมูลที่มีทั้งหมด)
   const availableGrades = useMemo(() => {
     const grades = allMotorcyclesData
       .map(item => item.classGrade)
@@ -150,7 +158,6 @@ const MotorcycleSearch = () => {
     return ['all', ...Array.from(new Set(grades)).sort()];
   }, [allMotorcyclesData]);
 
-  // ระบบค้นหาและกรอง
   const applyFilters = useCallback(() => {
     setIsSearching(true);
     const lowerCaseQuery = searchQuery.toLowerCase().trim();
@@ -169,12 +176,10 @@ const MotorcycleSearch = () => {
     setTimeout(() => setIsSearching(false), 200);
   }, [searchQuery, selectedGrade, allMotorcyclesData]);
 
-  // Auto Search เมื่อพิมพ์
   useEffect(() => {
     if (allMotorcyclesData.length > 0) applyFilters();
-  }, [selectedGrade, searchQuery, allMotorcyclesData.length]); // ลบ applyFilters ออกจาก dependency เพื่อลด loop
+  }, [selectedGrade, searchQuery, allMotorcyclesData.length]); 
 
-  // Export CSV
   const exportToCSV = () => {
     if (searchResults.length === 0) return;
     const headers = ["Source", "ทะเบียนรถ", "ยี่ห้อ/รุ่น", "สี", "เจ้าของ", "ชั้นเรียน", "วันที่"];
@@ -274,7 +279,6 @@ const MotorcycleSearch = () => {
                     <span className="text-xs mt-2">ไม่มีรูปภาพ</span>
                   </div>
                 )}
-                {/* Badge บอกแหล่งที่มา */}
                 <div className="absolute top-3 left-3">
                   {item.source === 'supabase' ? (
                     <span className="bg-blue-600/90 backdrop-blur-sm text-white px-2 py-1 rounded-full text-[10px] font-bold flex items-center shadow-sm">
