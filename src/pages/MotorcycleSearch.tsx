@@ -49,35 +49,48 @@ const MotorcycleSearch = () => {
   const canAccess = true;
 
   // 1. ฟังก์ชันดึงจาก Google Sheets
+ // 1. ฟังก์ชันดึงจาก Google Sheets (แบบไม่ต้องใช้ API Key)
   const fetchGoogleSheetData = useCallback(async () => {
-    if (!GOOGLE_SHEET_ID || !GOOGLE_API_KEY) return [];
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/${GOOGLE_SHEET_RANGE}?key=${GOOGLE_API_KEY}`;
+    if (!GOOGLE_SHEET_ID) return [];
+    
+    // ใช้ URL แบบ Visualization Query (gviz) แทน API v4
+    const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json&sheet=DATA`;
     
     try {
       const response = await fetch(url);
-      if (!response.ok) return [];
-      const data = await response.json();
-      if (!data.values || data.values.length <= 1) return [];
+      if (!response.ok) throw new Error('Network response was not ok');
+      
+      const text = await response.text();
+      // ตัดส่วนหัว google.visualization.Query.setResponse( ... ); ออกเพื่อให้ได้ JSON แท้ๆ
+      const jsonString = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);/);
+      
+      if (!jsonString || !jsonString[1]) return [];
+      
+      const json = JSON.parse(jsonString[1]);
+      const rows = json.table.rows;
 
-      const rows = data.values.slice(1);
-      return rows.map((row: string[], index: number) => ({
+      if (!rows || rows.length === 0) return [];
+
+      // Map ข้อมูล (ต้องระวัง Index ของ Column ให้ตรงกับ Sheet)
+      // c[0] = Timestamp, c[1] = ชื่อ, c[2] = ชั้น, c[3] = ยี่ห้อ, c[4] = สี, c[5] = ทะเบียน, c[6] = รูปหน้า, c[7] = รูปทะเบียน
+      return rows.map((row: any, index: number) => ({
         id: `google-${index}`,
         source: 'google',
-        timestamp: row[0] || '',
-        fullName: row[1] || '',
-        classGrade: row[2] || '',
-        brandModel: row[3] || '',
-        vehicleColor: row[4] || '',
-        plateNumber: row[5] || '',
-        frontPhotoUrl: row[6] || '',
-        licensePlatePhotoUrl: row[7] || ''
-      })).filter((item: any) => item.fullName && item.plateNumber); // กรองแถวว่างทิ้ง
+        timestamp: row.c[0]?.f || row.c[0]?.v || '',
+        fullName: row.c[1]?.v || '',
+        classGrade: row.c[2]?.v || '',
+        brandModel: row.c[3]?.v || '',
+        vehicleColor: row.c[4]?.v || '',
+        plateNumber: row.c[5]?.v || '',
+        frontPhotoUrl: row.c[6]?.v || '',
+        licensePlatePhotoUrl: row.c[7]?.v || ''
+      })).filter((item: any) => item.fullName && item.plateNumber); // กรองแถวว่าง
+
     } catch (error) {
       console.error("Google Sheet Error:", error);
       return [];
     }
-  }, [GOOGLE_API_KEY]);
-
+  }, []);
   // 2. ฟังก์ชันดึงจาก Supabase
   const fetchSupabaseData = useCallback(async () => {
     try {
