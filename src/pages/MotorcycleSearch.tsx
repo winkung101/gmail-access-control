@@ -12,13 +12,17 @@ import { useAuth } from '@/hooks/useAuth';
 import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 
+// ฟังก์ชันแปลงลิงก์ Google Drive ให้แสดงรูปได้
 const getDriveImageUrl = (driveUrl: string) => {
   if (!driveUrl) return '';
+  // ถ้าเป็นลิงก์ Supabase หรือลิงก์ตรงอยู่แล้ว ให้ใช้เลย
   if (driveUrl.startsWith('http') && !driveUrl.includes('drive.google.com')) return driveUrl;
+
+  // แปลงลิงก์ Google Drive
   const regExp = /id=([^&]+)|d\/([^/]+)\//;
   const match = driveUrl.match(regExp);
   const fileId = match ? (match[1] || match[2]) : null;
-  if (fileId) return `https://lh3.googleusercontent.com/d/${fileId}=s800`;
+  if (fileId) return `https://lh3.googleusercontent.com/d/${fileId}=s800`; // ใช้ LH3 server เพื่อโหลดเร็ว
   return driveUrl;
 };
 
@@ -51,55 +55,55 @@ const MotorcycleSearch = () => {
   const [allMotorcyclesData, setAllMotorcyclesData] = useState<any[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
+  // ID Google Sheet ของคุณ
   const GOOGLE_SHEET_ID = '1YqjDZXFLktWvwKg_2hY_kMGAhD69tmy6W4phpSfAMbM';
   
-  // สิทธิ์การเข้าถึง
   const canAccess = true;
 
-  // 1. ฟังก์ชันดึงจาก Google Sheets (แบบ CSV - เสถียรกว่า)
+  // 1. ดึงข้อมูลจาก Google Sheets (แบบ CSV Export)
   const fetchGoogleSheetData = useCallback(async () => {
     if (!GOOGLE_SHEET_ID) return [];
     
-    // ใช้ URL แบบ Export CSV (ดึงแผ่นแรกเสมอ ไม่ต้องระบุชื่อ Sheet)
+    // ใช้ URL Export CSV (ดึง Sheet แรกเสมอ)
     const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv`;
     
     try {
       const response = await fetch(url);
-      if (!response.ok) throw new Error('Network response was not ok');
+      if (!response.ok) throw new Error('Failed to fetch Google Sheet');
       
       const csvText = await response.text();
-      const rows = csvText.split('\n'); // แยกบรรทัด
+      const rows = csvText.split('\n');
 
       if (rows.length <= 1) return [];
 
-      // map ข้อมูล (เริ่มที่ row 1 คือข้าม Header)
+      // Map ข้อมูล (ข้าม Header บรรทัดแรก)
       return rows.slice(1).map((rowString, index) => {
-        const cols = parseCSVLine(rowString); // ใช้ฟังก์ชันตัดคำพิเศษ
+        const cols = parseCSVLine(rowString);
         
-        // ตรวจสอบจำนวนคอลัมน์ว่ามีข้อมูลสำคัญครบไหม (Timestamp, ชื่อ, ชั้น, ทะเบียน)
+        // เช็คว่ามีข้อมูลสำคัญครบไหม (Timestamp, ชื่อ, ชั้น, ทะเบียน)
         if (cols.length < 6) return null;
 
         return {
           id: `google-${index}`,
           source: 'google',
-          timestamp: cols[0] || '', // A: Timestamp
-          fullName: cols[1] || '',  // B: ชื่อ-สกุล
-          classGrade: cols[2] || '', // C: ชั้น
-          brandModel: cols[3] || '', // D: ยี่ห้อ
-          vehicleColor: cols[4] || '', // E: สี
-          plateNumber: cols[5] || '', // F: ทะเบียน (สำคัญ!)
-          frontPhotoUrl: cols[6] || '', // G: รูปหน้า
-          licensePlatePhotoUrl: cols[7] || '' // H: รูปทะเบียน
+          timestamp: cols[0] || '', // A
+          fullName: cols[1] || '',  // B
+          classGrade: cols[2] || '', // C
+          brandModel: cols[3] || '', // D
+          vehicleColor: cols[4] || '', // E
+          plateNumber: cols[5] || '', // F (ทะเบียน)
+          frontPhotoUrl: cols[6] || '', // G (รูปหน้า)
+          licensePlatePhotoUrl: cols[7] || '' // H (รูปทะเบียน)
         };
-      }).filter((item: any) => item && item.fullName && item.plateNumber); // กรองแถวว่างทิ้ง
+      }).filter((item: any) => item && item.fullName && item.plateNumber); // กรองแถวว่าง
 
     } catch (error) {
-      console.error("Google Sheet CSV Error:", error);
+      console.error("Google Sheet Fetch Error:", error);
       return [];
     }
   }, []);
 
-  // 2. ฟังก์ชันดึงจาก Supabase
+  // 2. ดึงข้อมูลจาก Supabase (Database)
   const fetchSupabaseData = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -122,25 +126,26 @@ const MotorcycleSearch = () => {
         licensePlatePhotoUrl: item.plate_image_url
       }));
     } catch (error) {
-      console.error("Supabase Error:", error);
+      console.error("Supabase Fetch Error:", error);
       return [];
     }
   }, []);
 
-  // รวมข้อมูลและโหลด
+  // รวมข้อมูล (Hybrid Load)
   useEffect(() => {
     if (!authLoading && canAccess) {
       const loadAllData = async () => {
         setIsInitialLoading(true);
         
+        // ดึงพร้อมกัน 2 แหล่ง
         const [googleData, supabaseData] = await Promise.all([
           fetchGoogleSheetData(),
           fetchSupabaseData()
         ]);
 
-        console.log("Google Data:", googleData.length); // Debug ดูจำนวนข้อมูล
-        console.log("Supabase Data:", supabaseData.length);
+        console.log(`Loaded: ${googleData.length} from Google, ${supabaseData.length} from DB`);
 
+        // รวมข้อมูล (เอา Supabase ไว้ก่อนเพราะเป็นข้อมูลใหม่กว่า)
         const combinedData = [...supabaseData, ...googleData];
         
         setAllMotorcyclesData(combinedData);
@@ -151,6 +156,7 @@ const MotorcycleSearch = () => {
     }
   }, [authLoading, fetchGoogleSheetData, fetchSupabaseData]);
 
+  // ตัวเลือกชั้นเรียน
   const availableGrades = useMemo(() => {
     const grades = allMotorcyclesData
       .map(item => item.classGrade)
@@ -158,6 +164,7 @@ const MotorcycleSearch = () => {
     return ['all', ...Array.from(new Set(grades)).sort()];
   }, [allMotorcyclesData]);
 
+  // ระบบค้นหา
   const applyFilters = useCallback(() => {
     setIsSearching(true);
     const lowerCaseQuery = searchQuery.toLowerCase().trim();
@@ -180,6 +187,7 @@ const MotorcycleSearch = () => {
     if (allMotorcyclesData.length > 0) applyFilters();
   }, [selectedGrade, searchQuery, allMotorcyclesData.length]); 
 
+  // Export CSV
   const exportToCSV = () => {
     if (searchResults.length === 0) return;
     const headers = ["Source", "ทะเบียนรถ", "ยี่ห้อ/รุ่น", "สี", "เจ้าของ", "ชั้นเรียน", "วันที่"];
@@ -197,15 +205,15 @@ const MotorcycleSearch = () => {
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `motorcycle_hybrid_data_${Date.now()}.csv`;
+    link.download = `hybrid_motorcycles_${Date.now()}.csv`;
     link.click();
-    toast({ title: "ดาวน์โหลดสำเร็จ", description: "รวมข้อมูลจาก Google และ Database แล้ว" });
+    toast({ title: "ดาวน์โหลดสำเร็จ", description: "ส่งออกข้อมูลรวม 2 แหล่งแล้ว" });
   };
 
   if (authLoading || isInitialLoading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
       <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
-      <p className="text-slate-500 font-medium tracking-wide">กำลังรวมข้อมูลจากฐานข้อมูลและ Cloud...</p>
+      <p className="text-slate-500 font-medium tracking-wide">กำลังเชื่อมต่อฐานข้อมูลและ Google Cloud...</p>
     </div>
   );
 
@@ -254,7 +262,7 @@ const MotorcycleSearch = () => {
               </div>
               <div className="md:col-span-3">
                 <div className="flex items-center justify-center h-12 bg-slate-50 rounded-md border border-slate-100 text-xs text-slate-500 px-4">
-                  <span>รายการทั้งหมด: <strong>{searchResults.length}</strong> คัน</span>
+                  <span>พบข้อมูล: <strong>{searchResults.length}</strong> คัน</span>
                 </div>
               </div>
             </div>
@@ -279,6 +287,7 @@ const MotorcycleSearch = () => {
                     <span className="text-xs mt-2">ไม่มีรูปภาพ</span>
                   </div>
                 )}
+                {/* Badge บอกแหล่งที่มา */}
                 <div className="absolute top-3 left-3">
                   {item.source === 'supabase' ? (
                     <span className="bg-blue-600/90 backdrop-blur-sm text-white px-2 py-1 rounded-full text-[10px] font-bold flex items-center shadow-sm">
