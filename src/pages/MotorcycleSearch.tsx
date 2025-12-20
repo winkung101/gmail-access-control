@@ -12,35 +12,24 @@ import { useAuth } from '@/hooks/useAuth';
 import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 
-// ฟังก์ชันแปลงลิงก์ Google Drive ให้แสดงรูปได้
+// --- แก้ไขจุดที่ 1: ฟังก์ชันแปลงลิงก์รูปภาพ (ใช้ HTTPS + Regex ที่แม่นยำ) ---
 const getDriveImageUrl = (driveUrl: string) => {
   if (!driveUrl) return '';
-  // ถ้าเป็นลิงก์ Supabase หรือลิงก์ตรงอยู่แล้ว ให้ใช้เลย
-  if (driveUrl.startsWith('http') && !driveUrl.includes('drive.google.com')) return driveUrl;
+  // ถ้าไม่ใช่ Google Drive ให้คืนค่าเดิม
+  if (!driveUrl.includes('drive.google.com') && !driveUrl.includes('googleusercontent.com')) {
+    return driveUrl;
+  }
 
-  // แปลงลิงก์ Google Drive
-  const regExp = /id=([^&]+)|d\/([^/]+)\//;
+  // Regex จับ ID ที่แม่นยำกว่าเดิม
+  const regExp = /\/d\/([a-zA-Z0-9_-]+)|id=([a-zA-Z0-9_-]+)/;
   const match = driveUrl.match(regExp);
   const fileId = match ? (match[1] || match[2]) : null;
-  if (fileId) return `https://lh3.googleusercontent.com/d/${fileId}=s800`; // ใช้ LH3 server เพื่อโหลดเร็ว
-  return driveUrl;
-};
 
-// ฟังก์ชันช่วยตัดคำ CSV (รองรับกรณีมีเครื่องหมายลูกน้ำในข้อความ)
-const parseCSVLine = (text: string) => {
-  const result = [];
-  let start = 0;
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '"') {
-      inQuotes = !inQuotes;
-    } else if (text[i] === ',' && !inQuotes) {
-      result.push(text.substring(start, i).replace(/^"|"$/g, '').trim());
-      start = i + 1;
-    }
+  if (fileId) {
+    // ใช้ลิงก์แสดงผลรูปภาพโดยตรง (Thumbnail API) ซึ่งโหลดไวและไม่ติดสิทธิ์
+    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
   }
-  result.push(text.substring(start).replace(/^"|"$/g, '').trim());
-  return result;
+  return driveUrl;
 };
 
 const MotorcycleSearch = () => {
@@ -55,55 +44,57 @@ const MotorcycleSearch = () => {
   const [allMotorcyclesData, setAllMotorcyclesData] = useState<any[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  // ID Google Sheet ของคุณ
   const GOOGLE_SHEET_ID = '1YqjDZXFLktWvwKg_2hY_kMGAhD69tmy6W4phpSfAMbM';
-  
   const canAccess = true;
 
-  // 1. ดึงข้อมูลจาก Google Sheets (แบบ CSV Export)
+  // --- แก้ไขจุดที่ 2: ดึงข้อมูลแบบ JSON (gviz) แทน CSV เพื่อความแม่นยำ ---
   const fetchGoogleSheetData = useCallback(async () => {
     if (!GOOGLE_SHEET_ID) return [];
     
-    // ใช้ URL Export CSV (ดึง Sheet แรกเสมอ)
-    const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv`;
+    // ใช้ URL แบบ JSON (เสถียรกว่า CSV)
+    const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json`;
     
     try {
       const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch Google Sheet');
+      if (!response.ok) throw new Error('Network response was not ok');
       
-      const csvText = await response.text();
-      const rows = csvText.split('\n');
+      const text = await response.text();
+      // ตัดส่วนเกินของ Google Response ออกเพื่อให้ได้ JSON แท้ๆ
+      const jsonString = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);/);
+      
+      if (!jsonString || !jsonString[1]) return [];
+      
+      const json = JSON.parse(jsonString[1]);
+      const rows = json.table.rows;
 
-      if (rows.length <= 1) return [];
+      if (!rows || rows.length === 0) return [];
 
-      // Map ข้อมูล (ข้าม Header บรรทัดแรก)
-      return rows.slice(1).map((rowString, index) => {
-        const cols = parseCSVLine(rowString);
-        
-        // เช็คว่ามีข้อมูลสำคัญครบไหม (Timestamp, ชื่อ, ชั้น, ทะเบียน)
-        if (cols.length < 6) return null;
+      return rows.map((row: any, index: number) => {
+        // Map ข้อมูลตามลำดับคอลัมน์ (ระวัง: gviz นับคอลัมน์ A=0, B=1...)
+        // ต้องตรวจสอบว่า row.c[i] มีค่าหรือไม่ (?.v)
+        const getVal = (idx: number) => (row.c[idx] ? (row.c[idx].v || '') : '');
 
         return {
           id: `google-${index}`,
           source: 'google',
-          timestamp: cols[0] || '', // A
-          fullName: cols[1] || '',  // B
-          classGrade: cols[2] || '', // C
-          brandModel: cols[3] || '', // D
-          vehicleColor: cols[4] || '', // E
-          plateNumber: cols[5] || '', // F (ทะเบียน)
-          frontPhotoUrl: cols[6] || '', // G (รูปหน้า)
-          licensePlatePhotoUrl: cols[7] || '' // H (รูปทะเบียน)
+          timestamp: getVal(0), // Col A: Timestamp
+          fullName: getVal(1),  // Col B: ชื่อ
+          classGrade: getVal(2), // Col C: ชั้น
+          brandModel: getVal(3), // Col D: ยี่ห้อ
+          vehicleColor: getVal(4), // Col E: สี
+          plateNumber: getVal(5), // Col F: ทะเบียน
+          frontPhotoUrl: getVal(6), // Col G: รูปหน้า
+          licensePlatePhotoUrl: getVal(7) // Col H: รูปทะเบียน
         };
-      }).filter((item: any) => item && item.fullName && item.plateNumber); // กรองแถวว่าง
+      }).filter((item: any) => item.fullName && item.plateNumber); // กรองแถวว่างทิ้ง
 
     } catch (error) {
-      console.error("Google Sheet Fetch Error:", error);
+      console.error("Google Sheet JSON Error:", error);
       return [];
     }
   }, []);
 
-  // 2. ดึงข้อมูลจาก Supabase (Database)
+  // 2. ฟังก์ชันดึงจาก Supabase
   const fetchSupabaseData = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -126,30 +117,26 @@ const MotorcycleSearch = () => {
         licensePlatePhotoUrl: item.plate_image_url
       }));
     } catch (error) {
-      console.error("Supabase Fetch Error:", error);
+      console.error("Supabase Error:", error);
       return [];
     }
   }, []);
 
-  // รวมข้อมูล (Hybrid Load)
+  // รวมข้อมูล
   useEffect(() => {
     if (!authLoading && canAccess) {
       const loadAllData = async () => {
         setIsInitialLoading(true);
-        
-        // ดึงพร้อมกัน 2 แหล่ง
         const [googleData, supabaseData] = await Promise.all([
           fetchGoogleSheetData(),
           fetchSupabaseData()
         ]);
-
-        console.log(`Loaded: ${googleData.length} from Google, ${supabaseData.length} from DB`);
-
-        // รวมข้อมูล (เอา Supabase ไว้ก่อนเพราะเป็นข้อมูลใหม่กว่า)
-        const combinedData = [...supabaseData, ...googleData];
         
-        setAllMotorcyclesData(combinedData);
-        setSearchResults(combinedData);
+        // Debug ข้อมูลใน Console (กด F12 ดูได้เลย)
+        console.log("Data Loaded -> Google:", googleData.length, "Supabase:", supabaseData.length);
+
+        setAllMotorcyclesData([...supabaseData, ...googleData]);
+        setSearchResults([...supabaseData, ...googleData]);
         setIsInitialLoading(false);
       };
       loadAllData();
@@ -164,7 +151,7 @@ const MotorcycleSearch = () => {
     return ['all', ...Array.from(new Set(grades)).sort()];
   }, [allMotorcyclesData]);
 
-  // ระบบค้นหา
+  // ค้นหา
   const applyFilters = useCallback(() => {
     setIsSearching(true);
     const lowerCaseQuery = searchQuery.toLowerCase().trim();
@@ -174,7 +161,6 @@ const MotorcycleSearch = () => {
         (m.plateNumber?.toLowerCase().includes(lowerCaseQuery)) ||
         (m.fullName?.toLowerCase().includes(lowerCaseQuery)) ||
         (m.brandModel?.toLowerCase().includes(lowerCaseQuery));
-      
       const matchesGrade = selectedGrade === 'all' || m.classGrade === selectedGrade;
       return matchesSearch && matchesGrade;
     });
@@ -207,13 +193,13 @@ const MotorcycleSearch = () => {
     link.href = URL.createObjectURL(blob);
     link.download = `hybrid_motorcycles_${Date.now()}.csv`;
     link.click();
-    toast({ title: "ดาวน์โหลดสำเร็จ", description: "ส่งออกข้อมูลรวม 2 แหล่งแล้ว" });
+    toast({ title: "ดาวน์โหลดสำเร็จ", description: "รวมข้อมูลจาก Google และ Database แล้ว" });
   };
 
   if (authLoading || isInitialLoading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
       <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
-      <p className="text-slate-500 font-medium tracking-wide">กำลังเชื่อมต่อฐานข้อมูลและ Google Cloud...</p>
+      <p className="text-slate-500 font-medium tracking-wide">กำลังรวมข้อมูลจากฐานข้อมูลและ Cloud...</p>
     </div>
   );
 
@@ -262,7 +248,7 @@ const MotorcycleSearch = () => {
               </div>
               <div className="md:col-span-3">
                 <div className="flex items-center justify-center h-12 bg-slate-50 rounded-md border border-slate-100 text-xs text-slate-500 px-4">
-                  <span>พบข้อมูล: <strong>{searchResults.length}</strong> คัน</span>
+                  <span>รายการทั้งหมด: <strong>{searchResults.length}</strong> คัน</span>
                 </div>
               </div>
             </div>
@@ -279,6 +265,7 @@ const MotorcycleSearch = () => {
                     alt="Motorcycle" 
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                     loading="lazy"
+                    referrerPolicy="no-referrer"
                     onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/600x400?text=No+Image'; }}
                   />
                 ) : (
@@ -287,7 +274,6 @@ const MotorcycleSearch = () => {
                     <span className="text-xs mt-2">ไม่มีรูปภาพ</span>
                   </div>
                 )}
-                {/* Badge บอกแหล่งที่มา */}
                 <div className="absolute top-3 left-3">
                   {item.source === 'supabase' ? (
                     <span className="bg-blue-600/90 backdrop-blur-sm text-white px-2 py-1 rounded-full text-[10px] font-bold flex items-center shadow-sm">
@@ -343,7 +329,7 @@ const MotorcycleSearch = () => {
         <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
           <DialogContent className="max-w-3xl p-0 overflow-hidden bg-transparent border-none">
             <div className="relative group">
-              <img src={selectedImage || ''} alt="Preview" className="w-full h-auto rounded-lg shadow-2xl scale-in" />
+              <img src={selectedImage || ''} alt="Preview" className="w-full h-auto rounded-lg shadow-2xl scale-in" referrerPolicy="no-referrer" />
               <DialogClose className="absolute top-4 right-4 bg-black/50 text-white p-2 rounded-full hover:bg-black transition-colors">
                 <X className="h-5 w-5" />
               </DialogClose>
