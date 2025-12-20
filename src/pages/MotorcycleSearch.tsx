@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { 
   Search, ArrowLeft, Loader2, 
-  Image as ImageIcon, ExternalLink, User, Bike, X, Download, ShieldCheck, Database, Cloud 
+  Image as ImageIcon, ExternalLink, User, Bike, X, Download, ShieldCheck, Database, Cloud, Maximize2 
 } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
@@ -12,24 +12,18 @@ import { useAuth } from '@/hooks/useAuth';
 import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 
-// --- แก้ไขจุดที่ 1: ฟังก์ชันแปลงลิงก์รูปภาพ (ใช้ HTTPS + Regex ที่แม่นยำ) ---
-const getDriveImageUrl = (driveUrl: string) => {
-  if (!driveUrl) return '';
-  // ถ้าไม่ใช่ Google Drive ให้คืนค่าเดิม
-  if (!driveUrl.includes('drive.google.com') && !driveUrl.includes('googleusercontent.com')) {
-    return driveUrl;
-  }
-
-  // Regex จับ ID ที่แม่นยำกว่าเดิม
+// Helper: แปลงลิงก์รูปภาพ (LH3 Direct Link)
+const getDriveImageUrl = (url: string) => {
+  if (!url) return '';
+  if (!url.includes('drive.google.com') && !url.includes('googleusercontent.com')) return url;
+  
+  const cleanUrl = url.split(',')[0].trim();
   const regExp = /\/d\/([a-zA-Z0-9_-]+)|id=([a-zA-Z0-9_-]+)/;
-  const match = driveUrl.match(regExp);
+  const match = cleanUrl.match(regExp);
   const fileId = match ? (match[1] || match[2]) : null;
 
-  if (fileId) {
-    // ใช้ลิงก์แสดงผลรูปภาพโดยตรง (Thumbnail API) ซึ่งโหลดไวและไม่ติดสิทธิ์
-    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
-  }
-  return driveUrl;
+  if (fileId) return `https://lh3.googleusercontent.com/d/${fileId}=s1000`; 
+  return cleanUrl;
 };
 
 const MotorcycleSearch = () => {
@@ -47,11 +41,9 @@ const MotorcycleSearch = () => {
   const GOOGLE_SHEET_ID = '1YqjDZXFLktWvwKg_2hY_kMGAhD69tmy6W4phpSfAMbM';
   const canAccess = true;
 
-  // --- แก้ไขจุดที่ 2: ดึงข้อมูลแบบ JSON (gviz) แทน CSV เพื่อความแม่นยำ ---
+  // 1. ดึงข้อมูล Google Sheets
   const fetchGoogleSheetData = useCallback(async () => {
     if (!GOOGLE_SHEET_ID) return [];
-    
-    // ใช้ URL แบบ JSON (เสถียรกว่า CSV)
     const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json`;
     
     try {
@@ -59,42 +51,61 @@ const MotorcycleSearch = () => {
       if (!response.ok) throw new Error('Network response was not ok');
       
       const text = await response.text();
-      // ตัดส่วนเกินของ Google Response ออกเพื่อให้ได้ JSON แท้ๆ
       const jsonString = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);/);
       
       if (!jsonString || !jsonString[1]) return [];
       
       const json = JSON.parse(jsonString[1]);
+      const cols = json.table.cols;
       const rows = json.table.rows;
 
       if (!rows || rows.length === 0) return [];
 
+      const colMap: { [key: string]: number } = {};
+      cols.forEach((col: any, index: number) => {
+        if (col && col.label) colMap[col.label.trim()] = index;
+      });
+
+      const getColIndex = (names: string[]) => {
+        for (const name of names) {
+          if (colMap[name] !== undefined) return colMap[name];
+        }
+        return -1;
+      };
+
+      const idxTime = getColIndex(['ประทับเวลา', 'Timestamp']);
+      const idxName = getColIndex(['ชื่อ - สกุล', 'ชื่อ-สกุล', 'ชื่อ']);
+      const idxClass = getColIndex(['ชั้น (Ex. 1/1)', 'ชั้น']);
+      const idxBrand = getColIndex(['ยี้ห้อ', 'ยี่ห้อ']);
+      const idxColor = getColIndex(['สีของรถ (เช่น สีแดง)', 'สีของรถ']);
+      const idxPlate = getColIndex(['ทะเบียนรถ ( 1ขข 1234 ร้อยเอ็ด)', 'ทะเบียนรถ']);
+      const idxPhotoFront = getColIndex(['รูปถ่ายคู่กับรถด้านหน้า']);
+      const idxPhotoPlate = getColIndex(['รูปถ่ายคู่กับทะเบียนรถ']);
+
       return rows.map((row: any, index: number) => {
-        // Map ข้อมูลตามลำดับคอลัมน์ (ระวัง: gviz นับคอลัมน์ A=0, B=1...)
-        // ต้องตรวจสอบว่า row.c[i] มีค่าหรือไม่ (?.v)
-        const getVal = (idx: number) => (row.c[idx] ? (row.c[idx].v || '') : '');
+        const getVal = (idx: number) => (idx !== -1 && row.c[idx]) ? (row.c[idx].v || row.c[idx].f || '') : '';
 
         return {
           id: `google-${index}`,
           source: 'google',
-          timestamp: getVal(0), // Col A: Timestamp
-          fullName: getVal(1),  // Col B: ชื่อ
-          classGrade: getVal(2), // Col C: ชั้น
-          brandModel: getVal(3), // Col D: ยี่ห้อ
-          vehicleColor: getVal(4), // Col E: สี
-          plateNumber: getVal(5), // Col F: ทะเบียน
-          frontPhotoUrl: getVal(6), // Col G: รูปหน้า
-          licensePlatePhotoUrl: getVal(7) // Col H: รูปทะเบียน
+          timestamp: getVal(idxTime),
+          fullName: getVal(idxName),
+          classGrade: getVal(idxClass),
+          brandModel: getVal(idxBrand),
+          vehicleColor: getVal(idxColor),
+          plateNumber: getVal(idxPlate),
+          frontPhotoUrl: getVal(idxPhotoFront),
+          licensePlatePhotoUrl: getVal(idxPhotoPlate)
         };
-      }).filter((item: any) => item.fullName && item.plateNumber); // กรองแถวว่างทิ้ง
+      }).filter((item: any) => item.fullName && item.plateNumber);
 
     } catch (error) {
-      console.error("Google Sheet JSON Error:", error);
+      console.error("Google Sheet Error:", error);
       return [];
     }
   }, []);
 
-  // 2. ฟังก์ชันดึงจาก Supabase
+  // 2. ดึงข้อมูล Supabase
   const fetchSupabaseData = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -132,9 +143,6 @@ const MotorcycleSearch = () => {
           fetchSupabaseData()
         ]);
         
-        // Debug ข้อมูลใน Console (กด F12 ดูได้เลย)
-        console.log("Data Loaded -> Google:", googleData.length, "Supabase:", supabaseData.length);
-
         setAllMotorcyclesData([...supabaseData, ...googleData]);
         setSearchResults([...supabaseData, ...googleData]);
         setIsInitialLoading(false);
@@ -143,7 +151,6 @@ const MotorcycleSearch = () => {
     }
   }, [authLoading, fetchGoogleSheetData, fetchSupabaseData]);
 
-  // ตัวเลือกชั้นเรียน
   const availableGrades = useMemo(() => {
     const grades = allMotorcyclesData
       .map(item => item.classGrade)
@@ -151,7 +158,6 @@ const MotorcycleSearch = () => {
     return ['all', ...Array.from(new Set(grades)).sort()];
   }, [allMotorcyclesData]);
 
-  // ค้นหา
   const applyFilters = useCallback(() => {
     setIsSearching(true);
     const lowerCaseQuery = searchQuery.toLowerCase().trim();
@@ -173,7 +179,6 @@ const MotorcycleSearch = () => {
     if (allMotorcyclesData.length > 0) applyFilters();
   }, [selectedGrade, searchQuery, allMotorcyclesData.length]); 
 
-  // Export CSV
   const exportToCSV = () => {
     if (searchResults.length === 0) return;
     const headers = ["Source", "ทะเบียนรถ", "ยี่ห้อ/รุ่น", "สี", "เจ้าของ", "ชั้นเรียน", "วันที่"];
@@ -199,7 +204,7 @@ const MotorcycleSearch = () => {
   if (authLoading || isInitialLoading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
       <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
-      <p className="text-slate-500 font-medium tracking-wide">กำลังรวมข้อมูลจากฐานข้อมูลและ Cloud...</p>
+      <p className="text-slate-500 font-medium tracking-wide">กำลังรวมข้อมูล...</p>
     </div>
   );
 
@@ -212,8 +217,7 @@ const MotorcycleSearch = () => {
           </Button>
           <div className="flex items-center space-x-2">
             <ShieldCheck className="h-5 w-5 text-blue-600" />
-            <h1 className="font-bold text-slate-800 hidden sm:block">ระบบสืบค้นทะเบียนรถ (Hybrid)</h1>
-            <h1 className="font-bold text-slate-800 sm:hidden">สืบค้นทะเบียน</h1>
+            <h1 className="font-bold text-slate-800">ระบบสืบค้นทะเบียนรถ</h1>
           </div>
           <Button onClick={exportToCSV} variant="outline" size="sm" className="hidden sm:flex border-green-500 text-green-600 hover:bg-green-50">
             <Download className="h-4 w-4 mr-2" /> CSV
@@ -258,16 +262,22 @@ const MotorcycleSearch = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {searchResults.map((item, index) => (
             <Card key={`${item.source}-${item.id}-${index}`} className="border-none shadow-sm hover:shadow-xl transition-all duration-300 group overflow-hidden bg-white">
-              <div className="relative h-52 bg-slate-100 overflow-hidden cursor-zoom-in" onClick={() => item.frontPhotoUrl && setSelectedImage(getDriveImageUrl(item.frontPhotoUrl))}>
+              <div className="relative h-52 bg-slate-100 overflow-hidden cursor-zoom-in group" onClick={() => item.frontPhotoUrl && setSelectedImage(getDriveImageUrl(item.frontPhotoUrl))}>
                 {item.frontPhotoUrl ? (
-                  <img 
-                    src={getDriveImageUrl(item.frontPhotoUrl)} 
-                    alt="Motorcycle" 
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/600x400?text=No+Image'; }}
-                  />
+                  <>
+                    <img 
+                      src={getDriveImageUrl(item.frontPhotoUrl)} 
+                      alt="Motorcycle" 
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/600x400?text=No+Image'; }}
+                    />
+                    {/* Zoom Icon Overlay */}
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Maximize2 className="text-white h-8 w-8 drop-shadow-md" />
+                    </div>
+                  </>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full opacity-20">
                     <ImageIcon className="h-12 w-12" />
@@ -276,13 +286,9 @@ const MotorcycleSearch = () => {
                 )}
                 <div className="absolute top-3 left-3">
                   {item.source === 'supabase' ? (
-                    <span className="bg-blue-600/90 backdrop-blur-sm text-white px-2 py-1 rounded-full text-[10px] font-bold flex items-center shadow-sm">
-                      <Database className="w-3 h-3 mr-1" /> New
-                    </span>
+                    <span className="bg-blue-600/90 backdrop-blur-sm text-white px-2 py-1 rounded-full text-[10px] font-bold flex items-center shadow-sm"><Database className="w-3 h-3 mr-1" /> New</span>
                   ) : (
-                    <span className="bg-green-600/90 backdrop-blur-sm text-white px-2 py-1 rounded-full text-[10px] font-bold flex items-center shadow-sm">
-                      <Cloud className="w-3 h-3 mr-1" /> Google
-                    </span>
+                    <span className="bg-green-600/90 backdrop-blur-sm text-white px-2 py-1 rounded-full text-[10px] font-bold flex items-center shadow-sm"><Cloud className="w-3 h-3 mr-1" /> Google</span>
                   )}
                 </div>
                 <div className="absolute top-3 right-3">
@@ -326,12 +332,18 @@ const MotorcycleSearch = () => {
           </div>
         )}
 
+        {/* Responsive Image Dialog */}
         <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
-          <DialogContent className="max-w-3xl p-0 overflow-hidden bg-transparent border-none">
-            <div className="relative group">
-              <img src={selectedImage || ''} alt="Preview" className="w-full h-auto rounded-lg shadow-2xl scale-in" referrerPolicy="no-referrer" />
-              <DialogClose className="absolute top-4 right-4 bg-black/50 text-white p-2 rounded-full hover:bg-black transition-colors">
-                <X className="h-5 w-5" />
+          <DialogContent className="max-w-[95vw] md:max-w-4xl p-0 overflow-hidden bg-black/90 border-none shadow-2xl flex items-center justify-center h-auto max-h-[90vh]">
+            <div className="relative w-full h-full flex items-center justify-center p-2">
+              <img 
+                src={selectedImage || ''} 
+                alt="Preview" 
+                className="w-full h-auto max-h-[85vh] object-contain rounded-md shadow-lg scale-in" 
+                referrerPolicy="no-referrer"
+              />
+              <DialogClose className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-colors backdrop-blur-sm">
+                <X className="h-6 w-6" />
               </DialogClose>
             </div>
           </DialogContent>
