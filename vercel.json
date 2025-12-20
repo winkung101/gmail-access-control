@@ -20,7 +20,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self' https://*.supabase.co https://*.vercel.app; img-src 'self' data: https: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://*.vercel-analytics.com;"
+          "value": "default-src 'self' https://*.supabase.co https://*.vercel.app https://docs.google.com https://sheets.googleapis.com https://*.googleusercontent.com; img-src 'self' data: https: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://*.vercel-analytics.com;"
         }
       ]
     }
