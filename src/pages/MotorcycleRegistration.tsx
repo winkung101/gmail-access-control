@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
-import { ArrowLeft, Save, Loader2, Bike, ImagePlus, UploadCloud, Camera, RefreshCw, X, CheckCircle2, History, TrendingUp, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Bike, ImagePlus, UploadCloud, Camera, RefreshCw, X, CheckCircle2, History, TrendingUp, ScanText } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import axios from 'axios'; // ใช้ยิง API ไปหา Roboflow
 
 const MotorcycleRegistration = () => {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ const MotorcycleRegistration = () => {
   const [loading, setLoading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   
-  // Session State (เก็บค่าชั่วคราวในหน้าจอขณะทำงาน)
+  // Session State
   const [sessionCount, setSessionCount] = useState(0);
   const [recentHistory, setRecentHistory] = useState<any[]>([]);
 
@@ -44,12 +45,68 @@ const MotorcycleRegistration = () => {
 
   // --- Duplicate Check ---
   const checkDuplicatePlate = async (plate: string) => {
-    const { data, error } = await supabase
-      .from('motorcycles')
-      .select('id')
-      .eq('license_plate', plate)
-      .maybeSingle();
+    const { data, error } = await supabase.from('motorcycles').select('id').eq('license_plate', plate).maybeSingle();
     return !error && !!data;
+  };
+
+  // --- Roboflow OCR Logic (ระบบใหม่) ---
+  const performRoboflowOCR = async (file: File) => {
+    setUploadStatus("🤖 AI กำลังอ่านป้ายทะเบียน...");
+    
+    // 1. แปลงไฟล์รูปภาพเป็น Base64
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      const base64Data = reader.result; // ได้ string ยาวๆ
+
+      try {
+        // 2. ส่งไป Roboflow API
+        const response = await axios({
+          method: "POST",
+          url: "https://detect.roboflow.com/lpr-plate/2", // ใช้ Endpoint มาตรฐานสำหรับ Inference
+          params: {
+            api_key: "kuAfHWWHfzkNW512opY4", // Key ของคุณ
+            confidence: 0.4, // ค่าความมั่นใจขั้นต่ำ (ปรับได้)
+            overlap: 0.3
+          },
+          data: base64Data, // ส่ง Base64 ไปตรงๆ
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
+          }
+        });
+
+        // 3. ประมวลผลผลลัพธ์
+        console.log("Roboflow Response:", response.data);
+        const predictions = response.data.predictions;
+
+        if (predictions && predictions.length > 0) {
+          // เรียงลำดับตัวอักษรจาก ซ้าย -> ขวา (ตามค่า x)
+          const sortedPreds = predictions.sort((a: any, b: any) => a.x - b.x);
+          
+          // นำตัวอักษรมาต่อกัน
+          const plateText = sortedPreds.map((p: any) => p.class).join('');
+          
+          if (plateText.length > 2) {
+            setFormData(prev => ({ ...prev, licensePlate: plateText }));
+            toast({ 
+              title: "สแกนสำเร็จ!", 
+              description: `AI อ่านว่า: ${plateText}`, 
+              className: "bg-green-600 text-white border-none" 
+            });
+          } else {
+            toast({ title: "อ่านไม่ชัดเจน", description: "กรุณาลองถ่ายใหม่ หรือพิมพ์เอง", variant: "destructive" });
+          }
+        } else {
+          toast({ title: "ไม่พบตัวอักษร", description: "กรุณาถ่ายให้เห็นป้ายทะเบียนชัดเจน", variant: "destructive" });
+        }
+
+      } catch (error: any) {
+        console.error("Roboflow Error:", error.response?.data || error.message);
+        toast({ title: "เชื่อมต่อ AI ไม่สำเร็จ", description: "กรุณากรอกด้วยมือ", variant: "destructive" });
+      } finally {
+        setUploadStatus('');
+      }
+    };
   };
 
   // --- Camera Logic ---
@@ -82,11 +139,15 @@ const MotorcycleRegistration = () => {
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0);
-      canvas.toBlob((blob) => {
+      canvas.toBlob(async (blob) => {
         if (blob) {
           const file = new File([blob], `${cameraTarget}.jpg`, { type: 'image/jpeg' });
-          if (cameraTarget === 'vehicle') setVehicleFile(file);
-          else setPlateFile(file);
+          if (cameraTarget === 'vehicle') {
+            setVehicleFile(file);
+          } else {
+            setPlateFile(file);
+            await performRoboflowOCR(file); // ** เพิ่มตรงนี้: สแกนป้ายทันทีเมื่อถ่ายเสร็จ **
+          }
           stopCamera();
         }
       }, 'image/jpeg', 0.8);
@@ -197,7 +258,14 @@ const MotorcycleRegistration = () => {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: React.Dispatch<React.SetStateAction<File | null>>) => {
-    if (e.target.files && e.target.files[0]) setFile(e.target.files[0]);
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setFile(file);
+      // ถ้าเลือกไฟล์ทะเบียนจากอัลบั้ม ก็ให้สแกนด้วย
+      if (setFile === setPlateFile) {
+        performRoboflowOCR(file);
+      }
+    }
   };
 
   return (
@@ -241,7 +309,7 @@ const MotorcycleRegistration = () => {
                 <div className="w-12"></div>
               </div>
               <div className="absolute top-10 bg-black/60 text-white px-4 py-1 rounded-full text-sm">
-                ถ่ายภาพ{cameraTarget === 'plate' ? 'ป้ายทะเบียน' : 'ตัวรถ'}
+                ถ่ายภาพ{cameraTarget === 'plate' ? 'ป้ายทะเบียน (AI จะอ่าน)' : 'ตัวรถ'}
               </div>
             </div>
           </DialogContent>
@@ -251,7 +319,7 @@ const MotorcycleRegistration = () => {
         <div className="flex items-center justify-between">
           <Button variant="ghost" onClick={() => navigate('/home')} className="-ml-2"><ArrowLeft className="h-5 w-5 mr-1" /> หน้าแรก</Button>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-500">รายการรอบนี้:</span>
+            <span className="text-sm font-medium text-slate-500">รอบนี้:</span>
             <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-bold flex items-center">
               <TrendingUp className="w-3 h-3 mr-1" /> {sessionCount}
             </span>
@@ -305,7 +373,16 @@ const MotorcycleRegistration = () => {
                   {formData.color === 'others' && <Input placeholder="ระบุ..." className="mt-2" onChange={(e) => setOthers({...others, color: e.target.value})} />}
                 </div>
                 <div>
-                  <Label className="text-blue-600 font-bold">ทะเบียน <span className="text-red-500">*</span></Label>
+                  <Label className="flex justify-between items-center text-blue-600 font-bold">
+                    <span>ทะเบียน <span className="text-red-500">*</span></span>
+                    {/* ปุ่มสแกนแบบ Manual */}
+                    <span 
+                      className="text-[10px] bg-blue-100 px-2 rounded cursor-pointer flex items-center" 
+                      onClick={() => startCamera('plate')}
+                    >
+                      <ScanText className="inline h-3 w-3 mr-1"/> AI Scan
+                    </span>
+                  </Label>
                   <Input placeholder="1กข 1234" className="mt-1 font-mono text-lg tracking-wide border-blue-200 bg-blue-50" value={formData.licensePlate} onChange={(e) => handleInputChange('licensePlate', e.target.value)} />
                 </div>
               </div>
@@ -325,11 +402,12 @@ const MotorcycleRegistration = () => {
                   ) : (
                     <>
                       <Camera className="w-8 h-8 text-slate-400 mb-1"/>
-                      <span className="text-xs text-slate-500">คน+รถ</span>
+                      <span className="text-xs text-slate-500">ถ่ายรูปคน+รถ</span>
                     </>
                   )}
                 </div>
 
+                {/* ปุ่มถ่ายรูปทะเบียน + AI */}
                 <div 
                   className={`border-2 border-dashed rounded-lg h-32 flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95 ${plateFile ? 'border-green-500 bg-green-50' : 'border-slate-300 hover:bg-slate-50'}`}
                   onClick={() => startCamera('plate')}
@@ -342,7 +420,7 @@ const MotorcycleRegistration = () => {
                   ) : (
                     <>
                       <ImagePlus className="w-8 h-8 text-slate-400 mb-1"/>
-                      <span className="text-xs text-slate-500">ป้ายทะเบียน</span>
+                      <span className="text-xs text-slate-500">ถ่ายป้าย + AI</span>
                     </>
                   )}
                 </div>
@@ -357,23 +435,15 @@ const MotorcycleRegistration = () => {
           </CardContent>
         </Card>
 
-        {/* --- Recent History Section (ใหม่) --- */}
+        {/* History */}
         {recentHistory.length > 0 && (
           <div className="animate-in slide-in-from-bottom-4 fade-in duration-500">
-            <h3 className="text-sm font-semibold text-slate-500 mb-2 flex items-center px-1">
-              <History className="w-4 h-4 mr-1" /> บันทึกล่าสุด ({recentHistory.length})
-            </h3>
+            <h3 className="text-sm font-semibold text-slate-500 mb-2 flex items-center px-1"><History className="w-4 h-4 mr-1" /> บันทึกล่าสุด ({recentHistory.length})</h3>
             <div className="space-y-2">
               {recentHistory.map((item, index) => (
                 <div key={index} className="bg-white p-3 rounded-lg shadow-sm border border-slate-100 flex justify-between items-center">
-                  <div>
-                    <div className="font-bold text-slate-800 text-sm">{item.plate}</div>
-                    <div className="text-xs text-slate-500">{item.name} ({item.class})</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs font-mono text-slate-400">{item.time}</div>
-                    <div className="text-[10px] text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded-full mt-1">สำเร็จ</div>
-                  </div>
+                  <div><div className="font-bold text-slate-800 text-sm">{item.plate}</div><div className="text-xs text-slate-500">{item.name} ({item.class})</div></div>
+                  <div className="text-right"><div className="text-xs font-mono text-slate-400">{item.time}</div><div className="text-[10px] text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded-full mt-1">สำเร็จ</div></div>
                 </div>
               ))}
             </div>
