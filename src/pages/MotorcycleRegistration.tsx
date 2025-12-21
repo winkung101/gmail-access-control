@@ -6,9 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
-import { ArrowLeft, Save, Loader2, Bike, ImagePlus, UploadCloud, Camera, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Bike, ImagePlus, UploadCloud, Camera, RefreshCw, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 
 const MotorcycleRegistration = () => {
   const navigate = useNavigate();
@@ -16,13 +16,14 @@ const MotorcycleRegistration = () => {
   const [loading, setLoading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   
-  // Camera
+  // Camera & Dialog States
   const [showCamera, setShowCamera] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false); // State สำหรับหน้าต่างยืนยัน
   const [cameraTarget, setCameraTarget] = useState<'vehicle' | 'plate' | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
 
-  // Data
+  // Form Data
   const initialForm = { name: '', class: '', brand: '', model: '', color: '', licensePlate: '' };
   const [formData, setFormData] = useState(initialForm);
   const [others, setOthers] = useState({ class: '', brand: '', color: '' });
@@ -37,15 +38,29 @@ const MotorcycleRegistration = () => {
   const handleInputChange = (field: string, value: string) => setFormData(prev => ({ ...prev, [field]: value }));
   const handleOtherChange = (field: string, value: string) => setOthers(prev => ({ ...prev, [field]: value }));
 
-  // --- Camera Logic (เปิดกล้องเร็ว) ---
+  // --- 1. ระบบตรวจสอบทะเบียนซ้ำ (Duplicate Check) ---
+  const checkDuplicatePlate = async (plate: string) => {
+    const { data, error } = await supabase
+      .from('motorcycles')
+      .select('id')
+      .eq('license_plate', plate) // ตรวจสอบว่าทะเบียนนี้มีอยู่หรือยัง
+      .maybeSingle();
+
+    if (error) {
+      console.error("Check Error:", error);
+      return false; // ถ้า Error ให้ผ่านไปก่อน
+    }
+    return !!data; // คืนค่า true ถ้าเจอทะเบียนซ้ำ
+  };
+
+  // --- Camera Logic ---
   const startCamera = async (target: 'vehicle' | 'plate') => {
     setCameraTarget(target);
     setShowCamera(true);
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: { exact: "environment" } } // บังคับกล้องหลัง
-      }).catch(() => navigator.mediaDevices.getUserMedia({ video: true })); // Fallback
-      
+        video: { facingMode: { exact: "environment" } } 
+      }).catch(() => navigator.mediaDevices.getUserMedia({ video: true }));
       setStream(mediaStream);
       if (videoRef.current) videoRef.current.srcObject = mediaStream;
     } catch (err) {
@@ -79,11 +94,10 @@ const MotorcycleRegistration = () => {
     }
   };
 
-  // --- Upload Logic ---
   const compressAndUpload = async (file: File, prefix: string): Promise<string> => {
-    const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1280, useWebWorker: true, initialQuality: 0.7 }; // ลดขนาดลงอีกเพื่อความเร็ว
+    const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1280, useWebWorker: true, initialQuality: 0.7 };
     try {
-      setUploadStatus(`กำลังอัปรูป...`);
+      setUploadStatus(`อัปโหลดรูป ${prefix}...`);
       const compressedFile = await imageCompression(file, options);
       const fileName = `${Date.now()}_${prefix}.${file.name.split('.').pop()}`;
       const { error: uploadError } = await supabase.storage.from('motorcycle-photos').upload(fileName, compressedFile);
@@ -93,8 +107,47 @@ const MotorcycleRegistration = () => {
     } catch (error) { throw new Error(`อัปโหลดรูปไม่สำเร็จ`); }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // --- Pre-Submit Validation ---
+  const handlePreSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate Basic
+    const finalClass = formData.class === 'others' ? others.class : formData.class;
+    const finalBrand = formData.brand === 'others' ? others.brand : formData.brand;
+    const finalColor = formData.color === 'others' ? others.color : formData.color;
+
+    if (!formData.name || !finalClass || !finalBrand || !formData.model || !finalColor || !formData.licensePlate) {
+      toast({ title: "ข้อมูลไม่ครบ", description: "กรุณากรอกข้อมูลให้ครบทุกช่อง", variant: "destructive" });
+      return;
+    }
+    if (!vehicleFile || !plateFile) {
+      toast({ title: "ขาดรูปถ่าย", description: "กรุณาถ่ายรูปให้ครบทั้ง 2 รูป", variant: "destructive" });
+      return;
+    }
+
+    // Validate Duplicate
+    setLoading(true);
+    setUploadStatus('ตรวจสอบทะเบียน...');
+    const isDuplicate = await checkDuplicatePlate(formData.licensePlate);
+    setLoading(false);
+    setUploadStatus('');
+
+    if (isDuplicate) {
+      toast({ 
+        title: "ทะเบียนซ้ำ!", 
+        description: `ทะเบียน ${formData.licensePlate} มีในระบบแล้ว`, 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    // ถ้าผ่านหมด ให้เปิด Dialog ยืนยัน
+    setShowConfirm(true);
+  };
+
+  // --- Real Submit ---
+  const handleConfirmSubmit = async () => {
+    setShowConfirm(false);
     setLoading(true);
 
     try {
@@ -102,14 +155,9 @@ const MotorcycleRegistration = () => {
       const finalBrand = formData.brand === 'others' ? others.brand : formData.brand;
       const finalColor = formData.color === 'others' ? others.color : formData.color;
 
-      if (!formData.name || !finalClass || !finalBrand || !formData.model || !finalColor || !formData.licensePlate) {
-        throw new Error("กรุณากรอกข้อมูลให้ครบ");
-      }
-      if (!vehicleFile || !plateFile) throw new Error("กรุณาถ่ายรูปให้ครบ 2 รูป");
-
       const [vehicleUrl, plateUrl] = await Promise.all([
-        compressAndUpload(vehicleFile, 'vehicle'),
-        compressAndUpload(plateFile, 'plate')
+        compressAndUpload(vehicleFile!, 'vehicle'),
+        compressAndUpload(plateFile!, 'plate')
       ]);
 
       setUploadStatus('กำลังบันทึก...');
@@ -126,14 +174,13 @@ const MotorcycleRegistration = () => {
 
       if (error) throw error;
 
-      // Success & Auto Reset
       toast({ 
         title: "✅ บันทึกสำเร็จ!", 
         description: `ทะเบียน ${formData.licensePlate} เข้าระบบแล้ว`,
         className: "bg-green-600 text-white border-none"
       });
       
-      // Reset Form ทันที
+      // Reset
       setFormData(initialForm);
       setOthers({ class: '', brand: '', color: '' });
       setVehicleFile(null);
@@ -156,13 +203,36 @@ const MotorcycleRegistration = () => {
     <div className="min-h-screen bg-slate-50 py-8 px-4 pb-24">
       <div className="max-w-xl mx-auto space-y-4">
         
+        {/* --- 2. หน้าต่างยืนยันข้อมูล (Confirmation Dialog) --- */}
+        <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+          <DialogContent className="max-w-sm rounded-xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center text-blue-600"><CheckCircle2 className="mr-2"/> ยืนยันข้อมูลถูกต้อง?</DialogTitle>
+              <DialogDescription>กรุณาตรวจสอบข้อมูลก่อนบันทึก</DialogDescription>
+            </DialogHeader>
+            <div className="bg-slate-50 p-4 rounded-lg space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-slate-500">ชื่อ:</span> <span className="font-bold">{formData.name}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">ทะเบียน:</span> <span className="font-bold text-blue-600">{formData.licensePlate}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">รถ:</span> <span>{formData.brand} {formData.model} ({formData.color})</span></div>
+              <div className="flex gap-2 mt-2 pt-2 border-t">
+                {vehicleFile && <img src={URL.createObjectURL(vehicleFile)} className="w-12 h-12 object-cover rounded border" />}
+                {plateFile && <img src={URL.createObjectURL(plateFile)} className="w-12 h-12 object-cover rounded border" />}
+              </div>
+            </div>
+            <DialogFooter className="flex-row gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowConfirm(false)}>แก้ไข</Button>
+              <Button onClick={handleConfirmSubmit} className="bg-green-600 hover:bg-green-700">ยืนยันบันทึก</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Camera Modal */}
         <Dialog open={showCamera} onOpenChange={stopCamera}>
           <DialogContent className="max-w-md p-0 overflow-hidden bg-black border-none h-[100dvh] flex flex-col">
             <div className="relative flex-1 bg-black flex flex-col items-center justify-center">
               <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <div className="w-[80%] h-[50%] border-2 border-white/50 rounded-lg"></div> {/* Frame */}
+                <div className="w-[80%] h-[50%] border-2 border-white/50 rounded-lg"></div>
               </div>
               <div className="absolute bottom-10 w-full flex items-center justify-around px-8">
                 <Button onClick={stopCamera} variant="ghost" className="rounded-full h-12 w-12 bg-white/20 text-white"><X /></Button>
@@ -189,7 +259,7 @@ const MotorcycleRegistration = () => {
             </Button>
           </CardHeader>
           <CardContent className="p-4">
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handlePreSubmit} className="space-y-4">
               
               {/* 1. ผู้ขับขี่ */}
               <div className="grid grid-cols-2 gap-3">
@@ -239,7 +309,7 @@ const MotorcycleRegistration = () => {
 
               <hr className="border-slate-100" />
 
-              {/* 3. ถ่ายรูป (เน้นปุ่มใหญ่) */}
+              {/* 3. ถ่ายรูป */}
               <div className="grid grid-cols-2 gap-3">
                 <div 
                   className={`border-2 border-dashed rounded-lg h-32 flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95 ${vehicleFile ? 'border-green-500 bg-green-50' : 'border-slate-300 hover:bg-slate-50'}`}
@@ -276,13 +346,13 @@ const MotorcycleRegistration = () => {
                 </div>
               </div>
 
-              {/* ปุ่มบันทึก (Sticky Bottom) */}
+              {/* ปุ่มบันทึก */}
               <div className="fixed bottom-4 left-0 right-0 px-4 max-w-3xl mx-auto z-20">
                 <Button type="submit" className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-lg shadow-xl rounded-xl" disabled={loading}>
-                  {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> {uploadStatus || 'กำลังส่งข้อมูล...'}</> : <><Save className="mr-2 h-5 w-5" /> บันทึกข้อมูล</>}
+                  {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> {uploadStatus || 'กำลังตรวจสอบ...'}</> : <><Save className="mr-2 h-5 w-5" /> ตรวจสอบและบันทึก</>}
                 </Button>
               </div>
-              <div className="h-16"></div> {/* Spacer for fixed button */}
+              <div className="h-16"></div>
 
             </form>
           </CardContent>
