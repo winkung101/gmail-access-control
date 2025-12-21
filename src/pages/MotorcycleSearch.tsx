@@ -1,28 +1,28 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { 
   Search, ArrowLeft, Loader2, 
-  Image as ImageIcon, ExternalLink, User, Bike, X, Download, ShieldCheck, Database, Cloud, Maximize2 
+  Image as ImageIcon, ExternalLink, User, Bike, X, Download, ShieldCheck, Database, Cloud, QrCode, CheckCircle, AlertTriangle, Ban
 } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
+import html2canvas from 'html2canvas';
+import { Scanner } from '@yudiel/react-qr-scanner'; // ใช้ตัวใหม่ เสถียรกว่า
 
-// Helper: แปลงลิงก์รูปภาพ (LH3 Direct Link)
+// Helper: แปลงลิงก์รูปภาพ
 const getDriveImageUrl = (url: string) => {
   if (!url) return '';
   if (!url.includes('drive.google.com') && !url.includes('googleusercontent.com')) return url;
-  
   const cleanUrl = url.split(',')[0].trim();
   const regExp = /\/d\/([a-zA-Z0-9_-]+)|id=([a-zA-Z0-9_-]+)/;
   const match = cleanUrl.match(regExp);
   const fileId = match ? (match[1] || match[2]) : null;
-
-  if (fileId) return `https://lh3.googleusercontent.com/d/${fileId}=s1000`; 
+  if (fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
   return cleanUrl;
 };
 
@@ -36,29 +36,32 @@ const MotorcycleSearch = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [allMotorcyclesData, setAllMotorcyclesData] = useState<any[]>([]);
+  
+  // Modal States
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedPass, setSelectedPass] = useState<any | null>(null);
+  const [isDownloadingCard, setIsDownloadingCard] = useState(false);
+  
+  // QR Scan State
+  const [showScanner, setShowScanner] = useState(false);
 
+  const passCardRef = useRef<HTMLDivElement>(null); 
   const GOOGLE_SHEET_ID = '1YqjDZXFLktWvwKg_2hY_kMGAhD69tmy6W4phpSfAMbM';
   const canAccess = true;
 
-  // 1. ดึงข้อมูล Google Sheets
+  // 1. Fetch Google Sheets
   const fetchGoogleSheetData = useCallback(async () => {
     if (!GOOGLE_SHEET_ID) return [];
     const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json`;
-    
     try {
       const response = await fetch(url);
-      if (!response.ok) throw new Error('Network response was not ok');
-      
+      if (!response.ok) return [];
       const text = await response.text();
       const jsonString = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);/);
-      
       if (!jsonString || !jsonString[1]) return [];
-      
       const json = JSON.parse(jsonString[1]);
       const cols = json.table.cols;
       const rows = json.table.rows;
-
       if (!rows || rows.length === 0) return [];
 
       const colMap: { [key: string]: number } = {};
@@ -73,7 +76,6 @@ const MotorcycleSearch = () => {
         return -1;
       };
 
-      const idxTime = getColIndex(['ประทับเวลา', 'Timestamp']);
       const idxName = getColIndex(['ชื่อ - สกุล', 'ชื่อ-สกุล', 'ชื่อ']);
       const idxClass = getColIndex(['ชั้น (Ex. 1/1)', 'ชั้น']);
       const idxBrand = getColIndex(['ยี้ห้อ', 'ยี่ห้อ']);
@@ -84,37 +86,30 @@ const MotorcycleSearch = () => {
 
       return rows.map((row: any, index: number) => {
         const getVal = (idx: number) => (idx !== -1 && row.c[idx]) ? (row.c[idx].v || row.c[idx].f || '') : '';
-
         return {
           id: `google-${index}`,
           source: 'google',
-          timestamp: getVal(idxTime),
           fullName: getVal(idxName),
           classGrade: getVal(idxClass),
           brandModel: getVal(idxBrand),
           vehicleColor: getVal(idxColor),
           plateNumber: getVal(idxPlate),
           frontPhotoUrl: getVal(idxPhotoFront),
-          licensePlatePhotoUrl: getVal(idxPhotoPlate)
+          licensePlatePhotoUrl: getVal(idxPhotoPlate),
+          points: 100
         };
       }).filter((item: any) => item.fullName && item.plateNumber);
-
     } catch (error) {
       console.error("Google Sheet Error:", error);
       return [];
     }
   }, []);
 
-  // 2. ดึงข้อมูล Supabase
+  // 2. Fetch Supabase
   const fetchSupabaseData = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('motorcycles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
+      const { data, error } = await supabase.from('motorcycles').select('*').order('created_at', { ascending: false });
       if (error) throw error;
-
       return data.map((item) => ({
         id: item.id,
         source: 'supabase',
@@ -125,7 +120,8 @@ const MotorcycleSearch = () => {
         vehicleColor: item.vehicle_color,
         plateNumber: item.license_plate,
         frontPhotoUrl: item.vehicle_image_url,
-        licensePlatePhotoUrl: item.plate_image_url
+        licensePlatePhotoUrl: item.plate_image_url,
+        points: item.points || 100
       }));
     } catch (error) {
       console.error("Supabase Error:", error);
@@ -133,7 +129,6 @@ const MotorcycleSearch = () => {
     }
   }, []);
 
-  // รวมข้อมูล
   useEffect(() => {
     if (!authLoading && canAccess) {
       const loadAllData = async () => {
@@ -142,7 +137,6 @@ const MotorcycleSearch = () => {
           fetchGoogleSheetData(),
           fetchSupabaseData()
         ]);
-        
         setAllMotorcyclesData([...supabaseData, ...googleData]);
         setSearchResults([...supabaseData, ...googleData]);
         setIsInitialLoading(false);
@@ -161,7 +155,6 @@ const MotorcycleSearch = () => {
   const applyFilters = useCallback(() => {
     setIsSearching(true);
     const lowerCaseQuery = searchQuery.toLowerCase().trim();
-
     const filtered = allMotorcyclesData.filter(m => {
       const matchesSearch = !searchQuery || 
         (m.plateNumber?.toLowerCase().includes(lowerCaseQuery)) ||
@@ -170,7 +163,6 @@ const MotorcycleSearch = () => {
       const matchesGrade = selectedGrade === 'all' || m.classGrade === selectedGrade;
       return matchesSearch && matchesGrade;
     });
-
     setSearchResults(filtered);
     setTimeout(() => setIsSearching(false), 200);
   }, [searchQuery, selectedGrade, allMotorcyclesData]);
@@ -179,9 +171,46 @@ const MotorcycleSearch = () => {
     if (allMotorcyclesData.length > 0) applyFilters();
   }, [selectedGrade, searchQuery, allMotorcyclesData.length]); 
 
+  // --- ฟังก์ชันจัดการ QR Code (ใช้ตัวใหม่) ---
+  const handleScan = (result: any) => {
+    if (result) {
+      const text = result[0]?.rawValue; // ดึงค่าจาก Library ใหม่
+      if (text) {
+        setSearchQuery(text);
+        setShowScanner(false);
+        toast({ title: "สแกนสำเร็จ", description: `กำลังค้นหา: ${text}` });
+      }
+    }
+  };
+
+  const handleDownloadCard = async () => {
+    if (!passCardRef.current) return;
+    setIsDownloadingCard(true);
+    setTimeout(async () => {
+      try {
+        const canvas = await html2canvas(passCardRef.current, {
+          useCORS: true,
+          scale: 1.5,
+          backgroundColor: '#ffffff',
+          logging: false,
+        });
+        const image = canvas.toDataURL("image/jpeg", 0.9);
+        const link = document.createElement("a");
+        link.href = image;
+        link.download = `ASW_Pass_${selectedPass?.plateNumber || 'card'}.jpg`;
+        link.click();
+        toast({ title: "บันทึกสำเร็จ", description: "รูปภาพถูกบันทึกลงเครื่องแล้ว" });
+      } catch (error) {
+        toast({ title: "บันทึกไม่สำเร็จ", description: "ลองแคปหน้าจอแทนนะครับ", variant: "destructive" });
+      } finally {
+        setIsDownloadingCard(false);
+      }
+    }, 100);
+  };
+
   const exportToCSV = () => {
     if (searchResults.length === 0) return;
-    const headers = ["Source", "ทะเบียนรถ", "ยี่ห้อ/รุ่น", "สี", "เจ้าของ", "ชั้นเรียน", "วันที่"];
+    const headers = ["Source", "ทะเบียนรถ", "ยี่ห้อ/รุ่น", "สี", "เจ้าของ", "ชั้นเรียน", "คะแนน"];
     const csvRows = searchResults.map((item) => [
       item.source,
       `"${item.plateNumber || ''}"`,
@@ -189,27 +218,34 @@ const MotorcycleSearch = () => {
       `"${item.vehicleColor || ''}"`,
       `"${item.fullName || ''}"`,
       `"${item.classGrade || ''}"`,
-      `"${new Date(item.timestamp).toLocaleDateString('th-TH')}"`
+      `"${item.points || 100}"`
     ].join(","));
-
     const csvContent = [headers.join(","), ...csvRows].join("\n");
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `hybrid_motorcycles_${Date.now()}.csv`;
+    link.download = `motorcycles_${Date.now()}.csv`;
     link.click();
-    toast({ title: "ดาวน์โหลดสำเร็จ", description: "รวมข้อมูลจาก Google และ Database แล้ว" });
+    toast({ title: "ดาวน์โหลดสำเร็จ", description: "ส่งออกข้อมูลแล้ว" });
+  };
+
+  const getStatusColor = (points: number) => {
+    if (points >= 80) return { bg: 'bg-green-500', text: 'สถานะ: ปกติ', icon: <CheckCircle className="h-4 w-4" /> };
+    if (points >= 50) return { bg: 'bg-yellow-500', text: 'สถานะ: เฝ้าระวัง', icon: <AlertTriangle className="h-4 w-4" /> };
+    return { bg: 'bg-red-500', text: 'สถานะ: ถูกระงับ', icon: <Ban className="h-4 w-4" /> };
   };
 
   if (authLoading || isInitialLoading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
       <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
-      <p className="text-slate-500 font-medium tracking-wide">กำลังรวมข้อมูล...</p>
+      <p className="text-slate-500 font-medium">กำลังโหลดข้อมูล...</p>
     </div>
   );
 
   return (
     <div className="min-h-screen bg-[#f1f5f9] pb-20">
+      
+      {/* Navbar */}
       <nav className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-50 px-4 h-16 flex items-center shadow-sm">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
           <Button variant="ghost" onClick={() => navigate('/home')} className="hover:bg-slate-100">
@@ -217,8 +253,11 @@ const MotorcycleSearch = () => {
           </Button>
           <div className="flex items-center space-x-2">
             <ShieldCheck className="h-5 w-5 text-blue-600" />
-            <h1 className="font-bold text-slate-800">ระบบสืบค้นทะเบียนรถ</h1>
+            <h1 className="font-bold text-slate-800">สืบค้นทะเบียน</h1>
           </div>
+          <Button onClick={() => setShowScanner(true)} variant="ghost" size="icon" className="sm:hidden text-blue-600 hover:bg-blue-50">
+            <QrCode className="h-6 w-6" />
+          </Button>
           <Button onClick={exportToCSV} variant="outline" size="sm" className="hidden sm:flex border-green-500 text-green-600 hover:bg-green-50">
             <Download className="h-4 w-4 mr-2" /> CSV
           </Button>
@@ -226,17 +265,27 @@ const MotorcycleSearch = () => {
       </nav>
 
       <div className="max-w-6xl mx-auto px-4 pt-8 space-y-6">
+        {/* Search Controls */}
         <Card className="border-none shadow-lg bg-white overflow-hidden">
           <CardContent className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-              <div className="md:col-span-6 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input
-                  placeholder="พิมพ์ทะเบียน, ชื่อ, หรือรุ่นรถ..."
-                  className="pl-10 h-12 border-slate-200 focus:ring-2 focus:ring-blue-500"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+              <div className="md:col-span-6 relative flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="ค้นหาทะเบียน, ชื่อ, หรือสแกน QR..."
+                    className="pl-10 h-12 border-slate-200 focus:ring-2 focus:ring-blue-500"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <Button 
+                  onClick={() => setShowScanner(true)} 
+                  className="h-12 w-12 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md flex items-center justify-center"
+                  title="สแกน QR Code"
+                >
+                  <QrCode className="h-6 w-6" />
+                </Button>
               </div>
               <div className="md:col-span-3">
                 <select
@@ -252,71 +301,67 @@ const MotorcycleSearch = () => {
               </div>
               <div className="md:col-span-3">
                 <div className="flex items-center justify-center h-12 bg-slate-50 rounded-md border border-slate-100 text-xs text-slate-500 px-4">
-                  <span>รายการทั้งหมด: <strong>{searchResults.length}</strong> คัน</span>
+                  <span>พบข้อมูล: <strong>{searchResults.length}</strong> คัน</span>
                 </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* QR Scanner Modal (ใช้ Library ใหม่) */}
+        <Dialog open={showScanner} onOpenChange={setShowScanner}>
+          <DialogContent className="max-w-sm bg-black border-none p-0 overflow-hidden text-white">
+            <div className="relative h-[60vh] w-full bg-black flex flex-col items-center justify-center">
+              <Scanner 
+                onScan={handleScan}
+                allowMultiple={true}
+                scanDelay={2000} // หน่วงเวลาสแกนซ้ำ
+                styles={{ container: { width: "100%", height: "100%" } }}
+              />
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="w-48 h-48 border-2 border-white/50 rounded-lg relative">
+                  <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-green-500"></div>
+                  <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-green-500"></div>
+                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-green-500"></div>
+                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-green-500"></div>
+                </div>
+              </div>
+              <div className="absolute bottom-8 bg-black/60 px-4 py-2 rounded-full text-sm">
+                ส่องไปที่ QR Code
+              </div>
+              <DialogClose className="absolute top-4 right-4 bg-white/20 p-2 rounded-full hover:bg-white/40"><X className="w-6 h-6"/></DialogClose>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {searchResults.map((item, index) => (
             <Card key={`${item.source}-${item.id}-${index}`} className="border-none shadow-sm hover:shadow-xl transition-all duration-300 group overflow-hidden bg-white">
-              <div className="relative h-52 bg-slate-100 overflow-hidden cursor-zoom-in group" onClick={() => item.frontPhotoUrl && setSelectedImage(getDriveImageUrl(item.frontPhotoUrl))}>
+              <div className="relative h-52 bg-slate-100 overflow-hidden cursor-zoom-in" onClick={() => item.frontPhotoUrl && setSelectedImage(getDriveImageUrl(item.frontPhotoUrl))}>
                 {item.frontPhotoUrl ? (
-                  <>
-                    <img 
-                      src={getDriveImageUrl(item.frontPhotoUrl)} 
-                      alt="Motorcycle" 
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/600x400?text=No+Image'; }}
-                    />
-                    {/* Zoom Icon Overlay */}
-                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Maximize2 className="text-white h-8 w-8 drop-shadow-md" />
-                    </div>
-                  </>
+                  <img src={getDriveImageUrl(item.frontPhotoUrl)} alt="Motorcycle" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" loading="lazy" referrerPolicy="no-referrer" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/600x400?text=No+Image'; }} />
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full opacity-20">
-                    <ImageIcon className="h-12 w-12" />
-                    <span className="text-xs mt-2">ไม่มีรูปภาพ</span>
-                  </div>
+                  <div className="flex flex-col items-center justify-center h-full opacity-20"><ImageIcon className="h-12 w-12" /><span className="text-xs mt-2">ไม่มีรูปภาพ</span></div>
                 )}
-                <div className="absolute top-3 left-3">
-                  {item.source === 'supabase' ? (
-                    <span className="bg-blue-600/90 backdrop-blur-sm text-white px-2 py-1 rounded-full text-[10px] font-bold flex items-center shadow-sm"><Database className="w-3 h-3 mr-1" /> New</span>
-                  ) : (
-                    <span className="bg-green-600/90 backdrop-blur-sm text-white px-2 py-1 rounded-full text-[10px] font-bold flex items-center shadow-sm"><Cloud className="w-3 h-3 mr-1" /> Google</span>
-                  )}
+                <div className="absolute top-3 left-3 z-10" onClick={(e) => e.stopPropagation()}>
+                  <Button size="sm" className="h-7 text-[10px] bg-white/90 text-slate-800 hover:bg-white border-none shadow-md backdrop-blur-md" onClick={() => setSelectedPass(item)}>
+                    <QrCode className="h-3 w-3 mr-1 text-blue-600" /> บัตรผ่าน
+                  </Button>
                 </div>
-                <div className="absolute top-3 right-3">
-                  <span className="bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded text-[10px] font-bold tracking-widest uppercase">
-                    {item.classGrade}
-                  </span>
-                </div>
+                <div className="absolute top-3 right-3"><span className="bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded text-[10px] font-bold tracking-widest uppercase">{item.classGrade}</span></div>
               </div>
-
               <CardContent className="p-5 space-y-4">
                 <div className="text-center">
                   <h2 className="text-2xl font-black text-slate-800 tracking-tight">{item.plateNumber}</h2>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase flex items-center justify-center mt-1">
-                    <Bike className="h-3 w-3 mr-1" /> {item.brandModel}
-                  </div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase flex items-center justify-center mt-1"><Bike className="h-3 w-3 mr-1" /> {item.brandModel}</div>
                 </div>
-
                 <div className="space-y-2 pt-3 border-t">
-                  <div className="flex items-center text-sm text-slate-700">
-                    <User className="h-4 w-4 mr-2 text-blue-500" />
-                    <span className="font-semibold truncate">{item.fullName}</span>
-                  </div>
+                  <div className="flex items-center text-sm text-slate-700"><User className="h-4 w-4 mr-2 text-blue-500" /><span className="font-semibold truncate">{item.fullName}</span></div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-500 font-medium">สี: {item.vehicleColor}</span>
                     {item.licensePlatePhotoUrl && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[10px] text-blue-600 p-0 hover:bg-blue-50" onClick={() => window.open(getDriveImageUrl(item.licensePlatePhotoUrl), '_blank')}>
-                        <ExternalLink className="h-3 w-3 mr-1" /> รูปทะเบียน
-                      </Button>
+                      <Button variant="ghost" size="sm" className="h-6 text-[10px] text-blue-600 p-0 hover:bg-blue-50" onClick={() => window.open(getDriveImageUrl(item.licensePlatePhotoUrl), '_blank')}><ExternalLink className="h-3 w-3 mr-1" /> รูปทะเบียน</Button>
                     )}
                   </div>
                 </div>
@@ -325,35 +370,44 @@ const MotorcycleSearch = () => {
           ))}
         </div>
 
-        {searchResults.length === 0 && !isInitialLoading && (
-          <div className="text-center py-12 text-slate-400">
-            <Search className="h-12 w-12 mx-auto mb-3 opacity-20" />
-            <p>ไม่พบข้อมูลที่ค้นหา</p>
-          </div>
-        )}
-
-        {/* Responsive Image Dialog */}
-        <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
-          <DialogContent className="max-w-[95vw] md:max-w-4xl p-0 overflow-hidden bg-black/90 border-none shadow-2xl flex items-center justify-center h-auto max-h-[90vh]">
-            <div className="relative w-full h-full flex items-center justify-center p-2">
-              <img 
-                src={selectedImage || ''} 
-                alt="Preview" 
-                className="w-full h-auto max-h-[85vh] object-contain rounded-md shadow-lg scale-in" 
-                referrerPolicy="no-referrer"
-              />
-              <DialogClose className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-colors backdrop-blur-sm">
-                <X className="h-6 w-6" />
-              </DialogClose>
+        {/* e-Pass Modal */}
+        <Dialog open={!!selectedPass} onOpenChange={() => setSelectedPass(null)}>
+          <DialogContent className="max-w-sm rounded-2xl p-0 overflow-hidden border-none bg-white">
+            <div className="relative">
+              <div ref={passCardRef} className="bg-white"> 
+                <div className="bg-slate-900 p-4 text-white flex justify-between items-center">
+                  <div className="flex items-center space-x-2">
+                    <img src="https://img5.pic.in.th/file/secure-sv1/ASW-Logo-1.png" className="h-8 w-8 object-contain bg-white rounded-full p-0.5" />
+                    <div><h3 className="text-sm font-bold">ASW e-Pass</h3><p className="text-[10px] text-slate-400">บัตรอนุญาตขับขี่ในสถานศึกษา</p></div>
+                  </div>
+                </div>
+                {selectedPass && (
+                  <div className="p-6 flex flex-col items-center space-y-4">
+                    <div className={`${getStatusColor(selectedPass.points).bg} text-white px-4 py-1 rounded-full text-xs font-bold flex items-center shadow-sm`}><span className="mr-1">{getStatusColor(selectedPass.points).icon}</span>{getStatusColor(selectedPass.points).text} ({selectedPass.points} คะแนน)</div>
+                    <div className="text-center w-full border-2 border-black rounded-lg p-2 bg-white"><h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">{selectedPass.plateNumber}</h1><p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">ROI ET</p></div>
+                    <div className="w-full space-y-2 text-sm">
+                      <div className="flex justify-between border-b border-slate-100 pb-2"><span className="text-slate-400">เจ้าของรถ</span><span className="font-semibold text-slate-800">{selectedPass.fullName}</span></div>
+                      <div className="flex justify-between border-b border-slate-100 pb-2"><span className="text-slate-400">ระดับชั้น</span><span className="font-semibold text-slate-800">{selectedPass.classGrade}</span></div>
+                      <div className="flex justify-between border-b border-slate-100 pb-2"><span className="text-slate-400">ยานพาหนะ</span><span className="font-semibold text-slate-800">{selectedPass.brandModel} ({selectedPass.vehicleColor})</span></div>
+                    </div>
+                    <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-inner"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(selectedPass.plateNumber)}`} className="w-28 h-28 mix-blend-multiply" alt="QR Code" crossOrigin="anonymous" /></div>
+                    <p className="text-[10px] text-slate-400 text-center">สแกนเพื่อตรวจสอบข้อมูลในระบบ<br/>Issued by ASW-Moto System</p>
+                  </div>
+                )}
+              </div>
+              <div className="bg-slate-50 p-3 border-t border-slate-100 flex justify-center gap-2"><Button variant="outline" size="sm" className="w-full text-xs" onClick={() => setSelectedPass(null)} disabled={isDownloadingCard}>ปิด</Button><Button variant="default" size="sm" className="w-full text-xs bg-blue-600 hover:bg-blue-700" onClick={handleDownloadCard} disabled={isDownloadingCard}>{isDownloadingCard ? <Loader2 className="animate-spin h-3 w-3 mr-1" /> : <Download className="h-3 w-3 mr-1" />}{isDownloadingCard ? 'กำลังสร้าง...' : 'บันทึกรูปบัตร'}</Button></div>
             </div>
           </DialogContent>
         </Dialog>
 
-        <div className="sm:hidden flex justify-center pt-4">
-          <Button onClick={exportToCSV} variant="secondary" className="w-full bg-green-100 text-green-700 border-none">
-            <Download className="h-4 w-4 mr-2" /> CSV
-          </Button>
-        </div>
+        {/* Full Image Dialog */}
+        <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+          <DialogContent className="max-w-[95vw] md:max-w-4xl p-0 overflow-hidden bg-black/90 border-none shadow-2xl flex items-center justify-center h-auto max-h-[90vh]">
+            <div className="relative w-full h-full flex items-center justify-center p-2"><img src={selectedImage || ''} alt="Preview" className="w-full h-auto max-h-[85vh] object-contain rounded-md shadow-lg scale-in" referrerPolicy="no-referrer" /><DialogClose className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-colors backdrop-blur-sm"><X className="h-6 w-6" /></DialogClose></div>
+          </DialogContent>
+        </Dialog>
+
+        <div className="sm:hidden flex justify-center pt-4"><Button onClick={exportToCSV} variant="secondary" className="w-full bg-green-100 text-green-700 border-none"><Download className="h-4 w-4 mr-2" /> CSV</Button></div>
       </div>
     </div>
   );

@@ -15,6 +15,8 @@ import ScoreManagement from "./pages/ScoreManagement";
 import MotorcycleSearch from "./pages/MotorcycleSearch";
 import NotFound from "./pages/NotFound";
 import AppFooter from "./components/AppFooter"; // เพิ่ม: นำเข้า AppFooter
+import Dashboard from "./pages/Dashboard";
+import StickerGenerator from "./pages/StickerGenerator";
 
 const queryClient = new QueryClient();
 
@@ -71,6 +73,8 @@ const App = () => (
                 />
                 <Route path="*" element={<NotFound />} />
                 <Route path="/score-management" element={<ScoreManagement />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/sticker-generator" element={<StickerGenerator />} />
               </Routes>
             </main>
             <AppFooter /> {/* เพิ่ม AppFooter ที่นี่ */}
