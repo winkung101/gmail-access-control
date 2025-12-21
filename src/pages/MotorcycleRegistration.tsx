@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { ArrowLeft, Save, Loader2, Bike, ImagePlus, UploadCloud, Camera, RefreshCw, X, CheckCircle2, History, TrendingUp, ScanText } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import axios from 'axios'; // ใช้ยิง API ไปหา Roboflow
+import axios from 'axios';
 
 const MotorcycleRegistration = () => {
   const navigate = useNavigate();
@@ -49,64 +49,75 @@ const MotorcycleRegistration = () => {
     return !error && !!data;
   };
 
-  // --- Roboflow OCR Logic (ระบบใหม่) ---
+  // --- Roboflow OCR Logic (Final Fixed Version) ---
   const performRoboflowOCR = async (file: File) => {
+    // ใช้ Key ที่คุณให้มา
+    const apiKey = "kuAfHWWHfzkNW512opY4"; 
+    const modelEndpoint = "lpr-plate/2";
+
     setUploadStatus("🤖 AI กำลังอ่านป้ายทะเบียน...");
     
-    // 1. แปลงไฟล์รูปภาพเป็น Base64
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = async () => {
-      const base64Data = reader.result; // ได้ string ยาวๆ
+    try {
+      // ใช้ FormData เพื่อความเสถียรในการส่งไฟล์
+      const formData = new FormData();
+      formData.append("file", file);
 
-      try {
-        // 2. ส่งไป Roboflow API
-        const response = await axios({
-          method: "POST",
-          url: "https://detect.roboflow.com/lpr-plate/2", // ใช้ Endpoint มาตรฐานสำหรับ Inference
-          params: {
-            api_key: "kuAfHWWHfzkNW512opY4", // Key ของคุณ
-            confidence: 0.4, // ค่าความมั่นใจขั้นต่ำ (ปรับได้)
-            overlap: 0.3
-          },
-          data: base64Data, // ส่ง Base64 ไปตรงๆ
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded"
-          }
-        });
-
-        // 3. ประมวลผลผลลัพธ์
-        console.log("Roboflow Response:", response.data);
-        const predictions = response.data.predictions;
-
-        if (predictions && predictions.length > 0) {
-          // เรียงลำดับตัวอักษรจาก ซ้าย -> ขวา (ตามค่า x)
-          const sortedPreds = predictions.sort((a: any, b: any) => a.x - b.x);
-          
-          // นำตัวอักษรมาต่อกัน
-          const plateText = sortedPreds.map((p: any) => p.class).join('');
-          
-          if (plateText.length > 2) {
-            setFormData(prev => ({ ...prev, licensePlate: plateText }));
-            toast({ 
-              title: "สแกนสำเร็จ!", 
-              description: `AI อ่านว่า: ${plateText}`, 
-              className: "bg-green-600 text-white border-none" 
-            });
-          } else {
-            toast({ title: "อ่านไม่ชัดเจน", description: "กรุณาลองถ่ายใหม่ หรือพิมพ์เอง", variant: "destructive" });
-          }
-        } else {
-          toast({ title: "ไม่พบตัวอักษร", description: "กรุณาถ่ายให้เห็นป้ายทะเบียนชัดเจน", variant: "destructive" });
+      const response = await axios({
+        method: "POST",
+        url: `https://detect.roboflow.com/${modelEndpoint}`,
+        params: {
+          api_key: apiKey,
+          confidence: 0.4, // ค่าความมั่นใจ 40%
+          overlap: 0.3,
+          format: "json"
+        },
+        data: formData,
+        headers: {
+          "Content-Type": "multipart/form-data"
         }
+      });
 
-      } catch (error: any) {
-        console.error("Roboflow Error:", error.response?.data || error.message);
-        toast({ title: "เชื่อมต่อ AI ไม่สำเร็จ", description: "กรุณากรอกด้วยมือ", variant: "destructive" });
-      } finally {
-        setUploadStatus('');
+      console.log("AI Response:", response.data);
+      const predictions = response.data.predictions;
+
+      if (predictions && predictions.length > 0) {
+        // เรียงลำดับตัวอักษรจากซ้ายไปขวา (ตามแกน X)
+        const sortedPreds = predictions.sort((a: any, b: any) => a.x - b.x);
+        
+        // กรองเอาเฉพาะตัวเลขและอักษรภาษาไทย/อังกฤษ (ตัดขยะออก)
+        const plateText = sortedPreds
+          .map((p: any) => p.class)
+          .join('')
+          .replace(/[^ก-ฮA-Za-z0-9]/g, '');
+
+        if (plateText.length >= 2) {
+          setFormData(prev => ({ ...prev, licensePlate: plateText }));
+          toast({ 
+            title: "สแกนสำเร็จ! 🎉", 
+            description: `AI อ่านว่า: ${plateText}`, 
+            className: "bg-green-600 text-white border-none" 
+          });
+        } else {
+          toast({ title: "อ่านได้ไม่ชัดเจน", description: "กรุณาลองถ่ายใหม่ให้ใกล้ขึ้น", variant: "destructive" });
+        }
+      } else {
+        toast({ title: "ไม่พบป้ายทะเบียน", description: "AI มองไม่เห็นป้ายทะเบียนในภาพ", variant: "destructive" });
       }
-    };
+
+    } catch (error: any) {
+      console.error("Roboflow Error:", error);
+      let errorMsg = "เชื่อมต่อ AI ไม่สำเร็จ";
+      
+      if (error.response) {
+        if (error.response.status === 401) errorMsg = "API Key ไม่ถูกต้อง";
+        if (error.response.status === 403) errorMsg = "โควต้าการใช้งาน AI เต็ม";
+        if (error.response.status === 400) errorMsg = "รูปภาพไม่ถูกต้อง";
+      }
+      
+      toast({ title: "ระบบ AI ขัดข้อง", description: errorMsg, variant: "destructive" });
+    } finally {
+      setUploadStatus('');
+    }
   };
 
   // --- Camera Logic ---
@@ -146,7 +157,7 @@ const MotorcycleRegistration = () => {
             setVehicleFile(file);
           } else {
             setPlateFile(file);
-            await performRoboflowOCR(file); // ** เพิ่มตรงนี้: สแกนป้ายทันทีเมื่อถ่ายเสร็จ **
+            await performRoboflowOCR(file); // สแกนทันทีเมื่อถ่ายเสร็จ
           }
           stopCamera();
         }
@@ -259,12 +270,12 @@ const MotorcycleRegistration = () => {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: React.Dispatch<React.SetStateAction<File | null>>) => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setFile(file);
-      // ถ้าเลือกไฟล์ทะเบียนจากอัลบั้ม ก็ให้สแกนด้วย
-      if (setFile === setPlateFile) {
-        performRoboflowOCR(file);
-      }
+        const file = e.target.files[0];
+        setFile(file);
+        // ถ้าเป็นไฟล์ทะเบียน ให้ส่งไปสแกนด้วย
+        if (setFile === setPlateFile) {
+            performRoboflowOCR(file);
+        }
     }
   };
 
@@ -315,7 +326,6 @@ const MotorcycleRegistration = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Header & Stats */}
         <div className="flex items-center justify-between">
           <Button variant="ghost" onClick={() => navigate('/home')} className="-ml-2"><ArrowLeft className="h-5 w-5 mr-1" /> หน้าแรก</Button>
           <div className="flex items-center gap-2">
@@ -392,36 +402,64 @@ const MotorcycleRegistration = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div 
                   className={`border-2 border-dashed rounded-lg h-32 flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95 ${vehicleFile ? 'border-green-500 bg-green-50' : 'border-slate-300 hover:bg-slate-50'}`}
-                  onClick={() => startCamera('vehicle')}
                 >
                   {vehicleFile ? (
-                    <div className="text-center">
-                      <img src={URL.createObjectURL(vehicleFile)} className="h-16 w-16 object-cover rounded-md mx-auto mb-1 border" />
-                      <span className="text-xs text-green-700 font-bold block">ถ่ายใหม่</span>
+                    <div className="text-center relative w-full h-full">
+                      <img src={URL.createObjectURL(vehicleFile)} className="w-full h-full object-cover rounded-md opacity-60" />
+                      <Button 
+                        size="sm" 
+                        variant="destructive" 
+                        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 h-8 text-xs"
+                        onClick={(e) => { e.stopPropagation(); setVehicleFile(null); }}
+                      >
+                        ลบรูป
+                      </Button>
                     </div>
                   ) : (
-                    <>
+                    <div className="flex flex-col items-center justify-center w-full h-full" onClick={() => startCamera('vehicle')}>
                       <Camera className="w-8 h-8 text-slate-400 mb-1"/>
                       <span className="text-xs text-slate-500">ถ่ายรูปคน+รถ</span>
-                    </>
+                      <div className="relative mt-2 w-full text-center">
+                        <span className="text-[10px] text-slate-300 bg-white px-1 relative z-10">หรือ</span>
+                        <div className="absolute top-1/2 left-0 w-full border-t border-slate-200 -z-0"></div>
+                      </div>
+                      <div className="relative mt-1">
+                        <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => handleFileChange(e, setVehicleFile)} />
+                        <span className="text-[10px] text-blue-500 underline">เลือกจากเครื่อง</span>
+                      </div>
+                    </div>
                   )}
                 </div>
 
                 {/* ปุ่มถ่ายรูปทะเบียน + AI */}
                 <div 
                   className={`border-2 border-dashed rounded-lg h-32 flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95 ${plateFile ? 'border-green-500 bg-green-50' : 'border-slate-300 hover:bg-slate-50'}`}
-                  onClick={() => startCamera('plate')}
                 >
                   {plateFile ? (
-                    <div className="text-center">
-                      <img src={URL.createObjectURL(plateFile)} className="h-16 w-16 object-cover rounded-md mx-auto mb-1 border" />
-                      <span className="text-xs text-green-700 font-bold block">ถ่ายใหม่</span>
+                    <div className="text-center relative w-full h-full">
+                      <img src={URL.createObjectURL(plateFile)} className="w-full h-full object-cover rounded-md opacity-60" />
+                      <Button 
+                        size="sm" 
+                        variant="destructive" 
+                        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 h-8 text-xs"
+                        onClick={(e) => { e.stopPropagation(); setPlateFile(null); }}
+                      >
+                        ลบรูป
+                      </Button>
                     </div>
                   ) : (
-                    <>
+                    <div className="flex flex-col items-center justify-center w-full h-full" onClick={() => startCamera('plate')}>
                       <ImagePlus className="w-8 h-8 text-slate-400 mb-1"/>
                       <span className="text-xs text-slate-500">ถ่ายป้าย + AI</span>
-                    </>
+                      <div className="relative mt-2 w-full text-center">
+                        <span className="text-[10px] text-slate-300 bg-white px-1 relative z-10">หรือ</span>
+                        <div className="absolute top-1/2 left-0 w-full border-t border-slate-200 -z-0"></div>
+                      </div>
+                      <div className="relative mt-1">
+                        <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => handleFileChange(e, setPlateFile)} />
+                        <span className="text-[10px] text-blue-500 underline">เลือกจากเครื่อง</span>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
