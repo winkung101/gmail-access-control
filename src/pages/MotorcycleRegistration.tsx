@@ -45,7 +45,7 @@ const MotorcycleRegistration = () => {
 
   // --- Duplicate Check ---
   const checkDuplicatePlate = async (plate: string) => {
-    const { data, error } = await supabase.from('motorcycles').select('id').eq('license_plate', plate).maybeSingle();
+    const { data, error } = await (supabase.from as any)('motorcycles').select('id').eq('license_plate', plate).maybeSingle();
     return !error && !!data;
   };
 
@@ -225,7 +225,7 @@ const MotorcycleRegistration = () => {
       ]);
 
       setUploadStatus('กำลังบันทึก...');
-      const { error } = await supabase.from('motorcycles').insert([{
+      const { error } = await (supabase.from as any)('motorcycles').insert([{
         owner_name: formData.name,
         classroom: finalClass,
         brand_model: `${finalBrand} ${formData.model}`,
