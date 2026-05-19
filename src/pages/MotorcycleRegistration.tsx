@@ -29,7 +29,7 @@ const MotorcycleRegistration = () => {
   const [stream, setStream] = useState<MediaStream | null>(null);
 
   // Form Data
-  const initialForm = { name: '', class: '', brand: '', model: '', color: '', licensePlate: '' };
+  const initialForm = { name: '', class: '', brand: '', model: '', color: '', licensePlate: '', hasLicense: false };
   const [formData, setFormData] = useState(initialForm);
   const [others, setOthers] = useState({ class: '', brand: '', color: '' });
   const [vehicleFile, setVehicleFile] = useState<File | null>(null);
@@ -40,12 +40,12 @@ const MotorcycleRegistration = () => {
   const BRAND_OPTIONS = ["Honda", "Yamaha", "Kawasaki", "Suzuki", "Vespa", "GPX", "Lambretta", "others"];
   const COLOR_OPTIONS = ["ดำ", "ขาว", "แดง", "น้ำเงิน", "เทา", "เขียว", "เหลือง", "ชมพู", "ส้ม", "ม่วง", "น้ำตาล", "others"];
 
-  const handleInputChange = (field: string, value: string) => setFormData(prev => ({ ...prev, [field]: value }));
+  const handleInputChange = (field: string, value: string | boolean) => setFormData(prev => ({ ...prev, [field]: value }));
   const handleOtherChange = (field: string, value: string) => setOthers(prev => ({ ...prev, [field]: value }));
 
   // --- Duplicate Check ---
   const checkDuplicatePlate = async (plate: string) => {
-    const { data, error } = await supabase.from('motorcycles').select('id').eq('license_plate', plate).maybeSingle();
+    const { data, error } = await (supabase.from as any)('motorcycles').select('id').eq('license_plate', plate).maybeSingle();
     return !error && !!data;
   };
 
@@ -225,7 +225,7 @@ const MotorcycleRegistration = () => {
       ]);
 
       setUploadStatus('กำลังบันทึก...');
-      const { error } = await supabase.from('motorcycles').insert([{
+      const { error } = await (supabase.from as any)('motorcycles').insert([{
         owner_name: formData.name,
         classroom: finalClass,
         brand_model: `${finalBrand} ${formData.model}`,
@@ -233,7 +233,8 @@ const MotorcycleRegistration = () => {
         license_plate: formData.licensePlate,
         points: 100,
         vehicle_image_url: vehicleUrl,
-        plate_image_url: plateUrl
+        plate_image_url: plateUrl,
+        has_license: formData.hasLicense
       }]);
 
       if (error) throw error;
@@ -394,6 +395,28 @@ const MotorcycleRegistration = () => {
                     </span>
                   </Label>
                   <Input placeholder="1กข 1234" className="mt-1 font-mono text-lg tracking-wide border-blue-200 bg-blue-50" value={formData.licensePlate} onChange={(e) => handleInputChange('licensePlate', e.target.value)} />
+                </div>
+              </div>
+
+              <hr className="border-slate-100" />
+
+              <div>
+                <Label>ใบขับขี่ <span className="text-red-500">*</span></Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('hasLicense', true)}
+                    className={`h-11 rounded-md border-2 text-sm font-semibold transition-all ${formData.hasLicense ? 'border-green-500 bg-green-50 text-green-700' : 'border-slate-200 bg-white text-slate-500'}`}
+                  >
+                    ✓ มีใบขับขี่
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('hasLicense', false)}
+                    className={`h-11 rounded-md border-2 text-sm font-semibold transition-all ${!formData.hasLicense ? 'border-red-500 bg-red-50 text-red-700' : 'border-slate-200 bg-white text-slate-500'}`}
+                  >
+                    ✗ ไม่มีใบขับขี่
+                  </button>
                 </div>
               </div>
 
