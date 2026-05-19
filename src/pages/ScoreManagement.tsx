@@ -99,7 +99,7 @@ const ScoreManagement = () => {
       }
 
       // 2. ดึง Supabase
-      const { data: motoData } = await supabase.from('motorcycles').select('*');
+      const { data: motoData } = await (supabase as any).from('motorcycles').select('*');
       const supabaseStudents: Student[] = motoData ? motoData.map(m => ({
         id: m.id,
         name: m.owner_name,
@@ -180,7 +180,7 @@ const ScoreManagement = () => {
     // กรณีที่ 2: ข้อมูลมาจาก Supabase (ลบได้)
     if (!confirm(`ยืนยันการลบข้อมูลของ ${student.name}?`)) return;
     
-    const { error } = await supabase.from('motorcycles').delete().eq('id', student.id);
+    const { error } = await (supabase as any).from('motorcycles').delete().eq('id', student.id);
     if (error) {
       toast({ title: "ลบไม่สำเร็จ", description: error.message, variant: "destructive" });
     } else {
@@ -217,10 +217,10 @@ const ScoreManagement = () => {
 
     let error;
     if (isEditing && studentForm.id) {
-      const { error: err } = await supabase.from('motorcycles').update(payload).eq('id', studentForm.id);
+      const { error: err } = await (supabase as any).from('motorcycles').update(payload).eq('id', studentForm.id);
       error = err;
     } else {
-      const { error: err } = await supabase.from('motorcycles').insert([payload]);
+      const { error: err } = await (supabase as any).from('motorcycles').insert([payload]);
       error = err;
     }
 

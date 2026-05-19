@@ -77,7 +77,7 @@ const Dashboard = () => {
   // 2. ดึงข้อมูล Supabase
   const fetchSupabaseData = useCallback(async () => {
     try {
-      const { data, error } = await supabase.from('motorcycles').select('created_at, classroom, brand_model');
+      const { data, error } = await (supabase as any).from('motorcycles').select('created_at, classroom, brand_model');
       if (error) throw error;
       return data || [];
     } catch (error) {

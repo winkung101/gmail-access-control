@@ -33,7 +33,7 @@ const Admin = () => {
   useEffect(() => {
     // โหลดข้อมูลประกาศเดิม
     const fetchAnnounce = async () => {
-      const { data } = await supabase.from('announcements').select('*').eq('id', ANNOUNCE_ID).maybeSingle();
+      const { data } = await (supabase as any).from('announcements').select('*').eq('id', ANNOUNCE_ID).maybeSingle();
       if (data) {
         setAnnouncement(data.content || '');
         setImageUrl(data.image_url || '');
@@ -43,7 +43,7 @@ const Admin = () => {
 
     // --- โหลดข้อมูลสถานะฟีเจอร์ ---
     const fetchFeatures = async () => {
-      const { data } = await supabase.from('feature_flags').select('*').order('feature_key');
+      const { data } = await (supabase as any).from('feature_flags').select('*').order('feature_key');
       if (data) setFeatures(data);
     };
 
@@ -55,7 +55,7 @@ const Admin = () => {
   const handleUpdateAnnounce = async (upgradeVersion: boolean = false) => {
     setLoading(true);
     const newVersion = upgradeVersion ? version + 1 : version;
-    const { error } = await supabase.from('announcements').upsert({ 
+    const { error } = await (supabase as any).from('announcements').upsert({ 
       id: ANNOUNCE_ID, content: announcement, image_url: imageUrl, version: newVersion, updated_at: new Date() 
     });
     if (error) toast({ title: "ผิดพลาด", variant: "destructive" });
@@ -71,12 +71,12 @@ const Admin = () => {
     // อัปเดต UI ทันทีเพื่อให้รู้ว่ากดแล้ว
     setFeatures(features.map(f => f.feature_key === key ? { ...f, is_enabled: !currentValue } : f));
     
-    const { error } = await supabase.from('feature_flags').update({ is_enabled: !currentValue }).eq('feature_key', key);
+    const { error } = await (supabase as any).from('feature_flags').update({ is_enabled: !currentValue }).eq('feature_key', key);
     if (error) toast({ title: "ตั้งค่าไม่สำเร็จ", variant: "destructive" });
   };
 
   const handleUpdateMessage = async (key: string, newMessage: string) => {
-    const { error } = await supabase.from('feature_flags').update({ message: newMessage }).eq('feature_key', key);
+    const { error } = await (supabase as any).from('feature_flags').update({ message: newMessage }).eq('feature_key', key);
     if (error) toast({ title: "บันทึกข้อความไม่สำเร็จ", variant: "destructive" });
   };
 
