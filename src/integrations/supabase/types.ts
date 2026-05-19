@@ -65,6 +65,39 @@ export type Database = {
         }
         Relationships: []
       }
+      score_records: {
+        Row: {
+          created_at: string
+          id: string
+          license_plate: string
+          reason: string
+          recorded_by: string | null
+          score_change: number
+          student_class: string | null
+          student_name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          license_plate: string
+          reason: string
+          recorded_by?: string | null
+          score_change: number
+          student_class?: string | null
+          student_name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          license_plate?: string
+          reason?: string
+          recorded_by?: string | null
+          score_change?: number
+          student_class?: string | null
+          student_name?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
