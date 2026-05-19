@@ -29,7 +29,7 @@ const MotorcycleRegistration = () => {
   const [stream, setStream] = useState<MediaStream | null>(null);
 
   // Form Data
-  const initialForm = { name: '', class: '', brand: '', model: '', color: '', licensePlate: '' };
+  const initialForm = { name: '', class: '', brand: '', model: '', color: '', licensePlate: '', hasLicense: false };
   const [formData, setFormData] = useState(initialForm);
   const [others, setOthers] = useState({ class: '', brand: '', color: '' });
   const [vehicleFile, setVehicleFile] = useState<File | null>(null);
@@ -40,7 +40,7 @@ const MotorcycleRegistration = () => {
   const BRAND_OPTIONS = ["Honda", "Yamaha", "Kawasaki", "Suzuki", "Vespa", "GPX", "Lambretta", "others"];
   const COLOR_OPTIONS = ["ดำ", "ขาว", "แดง", "น้ำเงิน", "เทา", "เขียว", "เหลือง", "ชมพู", "ส้ม", "ม่วง", "น้ำตาล", "others"];
 
-  const handleInputChange = (field: string, value: string) => setFormData(prev => ({ ...prev, [field]: value }));
+  const handleInputChange = (field: string, value: string | boolean) => setFormData(prev => ({ ...prev, [field]: value }));
   const handleOtherChange = (field: string, value: string) => setOthers(prev => ({ ...prev, [field]: value }));
 
   // --- Duplicate Check ---
@@ -233,7 +233,8 @@ const MotorcycleRegistration = () => {
         license_plate: formData.licensePlate,
         points: 100,
         vehicle_image_url: vehicleUrl,
-        plate_image_url: plateUrl
+        plate_image_url: plateUrl,
+        has_license: formData.hasLicense
       }]);
 
       if (error) throw error;
