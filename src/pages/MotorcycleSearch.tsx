@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import aswLogo from '@/assets/asw-logo.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -395,7 +396,7 @@ const MotorcycleSearch = () => {
               <div ref={passCardRef} className="bg-white"> 
                 <div className="bg-slate-900 p-4 text-white flex justify-between items-center">
                   <div className="flex items-center space-x-2">
-                    <img src="https://img5.pic.in.th/file/secure-sv1/ASW-Logo-1.png" className="h-8 w-8 object-contain bg-white rounded-full p-0.5" />
+                    <img src={aswLogo} className="h-8 w-8 object-contain bg-white rounded-full p-0.5" />
                     <div><h3 className="text-sm font-bold">ASW e-Pass</h3><p className="text-[10px] text-slate-400">บัตรอนุญาตขับขี่ในสถานศึกษา</p></div>
                   </div>
                 </div>

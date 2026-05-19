@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import aswLogo from '@/assets/asw-logo.png';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -220,7 +221,7 @@ const StickerGenerator = () => {
                 
                 {/* Logo & QR */}
                 <div className="flex flex-col items-center justify-center z-10 w-1/3 border-r border-dashed border-slate-300 pr-2">
-                  <img src="https://img5.pic.in.th/file/secure-sv1/ASW-Logo-1.png" className="h-10 w-10 mb-1" />
+                  <img src={aswLogo} className="h-10 w-10 mb-1" />
                   <img 
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(s.license_plate)}`} 
                     className="h-16 w-16 border p-1 rounded bg-white"
