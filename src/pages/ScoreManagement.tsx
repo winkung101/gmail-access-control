@@ -117,7 +117,7 @@ const ScoreManagement = () => {
       setStudents([...supabaseStudents, ...googleData]);
 
       // 3. ดึงประวัติคะแนน
-      const { data: recData } = await supabase.from('score_records').select('*').order('created_at', { ascending: false });
+      const { data: recData } = await (supabase as any).from('score_records').select('*').order('created_at', { ascending: false });
       if (recData) setScoreRecords(recData);
 
     } catch (error) { console.error(error); }
@@ -145,7 +145,7 @@ const ScoreManagement = () => {
     const finalReason = selectedReason === "อื่นๆ (ระบุเอง)" ? otherReason : selectedReason;
     if (!selectedStudent || scoreChange === 0 || !finalReason.trim()) return;
 
-    const { error } = await supabase.from('score_records').insert({
+    const { error } = await (supabase as any).from('score_records').insert({
       student_name: selectedStudent.name,
       student_class: selectedStudent.class,
       license_plate: selectedStudent.licensePlate,
@@ -161,7 +161,7 @@ const ScoreManagement = () => {
       setScoreChange(0);
       setOtherReason('');
       // รีโหลดเฉพาะประวัติ
-      const { data } = await supabase.from('score_records').select('*').order('created_at', { ascending: false });
+      const { data } = await (supabase as any).from('score_records').select('*').order('created_at', { ascending: false });
       if (data) setScoreRecords(data);
     }
   };
@@ -194,14 +194,14 @@ const ScoreManagement = () => {
   const handleDeleteHistory = async (recordId: string) => {
     if (!confirm("ยืนยันการลบประวัติรายการนี้? คะแนนจะถูกคำนวณใหม่ทันที")) return;
 
-    const { error } = await supabase.from('score_records').delete().eq('id', recordId);
+    const { error } = await (supabase as any).from('score_records').delete().eq('id', recordId);
     
     if (error) {
       toast({ title: "ลบประวัติไม่สำเร็จ", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "ลบประวัติเรียบร้อย", description: "คะแนนถูกคำนวณใหม่แล้ว" });
       // รีโหลดประวัติ
-      const { data } = await supabase.from('score_records').select('*').order('created_at', { ascending: false });
+      const { data } = await (supabase as any).from('score_records').select('*').order('created_at', { ascending: false });
       if (data) setScoreRecords(data);
     }
   };
