@@ -34,7 +34,7 @@ const Home = () => {
   useEffect(() => {
     const fetchAnnouncement = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
           .from('announcements')
           .select('*')
           .eq('id', '00000000-0000-0000-0000-000000000000')
