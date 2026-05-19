@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import aswLogo from '@/assets/asw-logo.png';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -130,7 +131,7 @@ const Home = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center space-x-3 cursor-pointer" onClick={() => navigate('/home')}>
-              <img src="https://img5.pic.in.th/file/secure-sv1/ASW-Logo-1.png" className="h-10 w-10 object-contain" />
+              <img src={aswLogo} className="h-10 w-10 object-contain" />
               <div className="flex flex-col"><span className="text-lg font-bold text-slate-900 leading-none">ASW-Moto</span><span className="text-[10px] text-slate-500 font-medium uppercase">ระบบสืบค้นทะเบียนรถ</span></div>
             </div>
             <Button onClick={handleSignOut} variant="ghost" className="text-slate-500 hover:text-red-600 hover:bg-red-50 text-sm">ออกจากระบบ</Button>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import aswLogo from '@/assets/asw-logo.png';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -489,7 +490,7 @@ const ScoreManagement = () => {
         {/* ส่วนหัวรายงาน (ปรับใหม่: โลโก้กลาง) */}
         <div className="a4-header">
           <img 
-            src="https://img5.pic.in.th/file/secure-sv1/ASW-Logo-1.png" 
+            src={aswLogo} 
             alt="School Logo" 
             className="school-logo" 
           />
