@@ -3,6 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useNavigate } from 'react-router-dom';
+import aswLogo from '@/assets/asw-logo.png';
 import { useEffect } from 'react';
 import { Search, Database, ShieldCheck, FileText, BarChart, Users } from 'lucide-react'; // เพิ่มไอคอนใหม่ที่เกี่ยวข้อง
 
