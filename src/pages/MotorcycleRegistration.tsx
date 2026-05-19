@@ -400,6 +400,28 @@ const MotorcycleRegistration = () => {
 
               <hr className="border-slate-100" />
 
+              <div>
+                <Label>ใบขับขี่ <span className="text-red-500">*</span></Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('hasLicense', true)}
+                    className={`h-11 rounded-md border-2 text-sm font-semibold transition-all ${formData.hasLicense ? 'border-green-500 bg-green-50 text-green-700' : 'border-slate-200 bg-white text-slate-500'}`}
+                  >
+                    ✓ มีใบขับขี่
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('hasLicense', false)}
+                    className={`h-11 rounded-md border-2 text-sm font-semibold transition-all ${!formData.hasLicense ? 'border-red-500 bg-red-50 text-red-700' : 'border-slate-200 bg-white text-slate-500'}`}
+                  >
+                    ✗ ไม่มีใบขับขี่
+                  </button>
+                </div>
+              </div>
+
+              <hr className="border-slate-100" />
+
               <div className="grid grid-cols-2 gap-3">
                 <div 
                   className={`border-2 border-dashed rounded-lg h-32 flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95 ${vehicleFile ? 'border-green-500 bg-green-50' : 'border-slate-300 hover:bg-slate-50'}`}
