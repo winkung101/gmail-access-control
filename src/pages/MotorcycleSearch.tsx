@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { 
   Search, ArrowLeft, Loader2, 
-  Image as ImageIcon, ExternalLink, User, Bike, X, Download, ShieldCheck, Database, Cloud, QrCode, CheckCircle, AlertTriangle, Ban
+  Image as ImageIcon, ExternalLink, User, Bike, X, Download, ShieldCheck, Database, Cloud, QrCode, CheckCircle, AlertTriangle, Ban, IdCard
 } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
@@ -97,7 +97,8 @@ const MotorcycleSearch = () => {
           plateNumber: getVal(idxPlate),
           frontPhotoUrl: getVal(idxPhotoFront),
           licensePlatePhotoUrl: getVal(idxPhotoPlate),
-          points: 100
+          points: 100,
+          hasLicense: null
         };
       }).filter((item: any) => item.fullName && item.plateNumber);
     } catch (error) {
@@ -122,7 +123,8 @@ const MotorcycleSearch = () => {
         plateNumber: item.license_plate,
         frontPhotoUrl: item.vehicle_image_url,
         licensePlatePhotoUrl: item.plate_image_url,
-        points: item.points || 100
+        points: item.points || 100,
+        hasLicense: item.has_license
       }));
     } catch (error) {
       console.error(error);
@@ -373,6 +375,24 @@ const MotorcycleSearch = () => {
                     <User className="h-4 w-4 mr-2 text-blue-500" />
                     <span className="font-semibold truncate">{item.fullName}</span>
                   </div>
+                  <div className="flex items-center text-xs">
+                    <IdCard className="h-3.5 w-3.5 mr-2 text-slate-400" />
+                    {item.hasLicense === true && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold">
+                        <CheckCircle className="h-3 w-3 mr-1" /> มีใบขับขี่
+                      </span>
+                    )}
+                    {item.hasLicense === false && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">
+                        <Ban className="h-3 w-3 mr-1" /> ไม่มีใบขับขี่
+                      </span>
+                    )}
+                    {(item.hasLicense === null || item.hasLicense === undefined) && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">
+                        ไม่ระบุใบขับขี่
+                      </span>
+                    )}
+                  </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-500 font-medium">สี: {item.vehicleColor}</span>
                     {item.licensePlatePhotoUrl && (
@@ -408,6 +428,12 @@ const MotorcycleSearch = () => {
                       <div className="flex justify-between border-b border-slate-100 pb-2"><span className="text-slate-400">เจ้าของรถ</span><span className="font-semibold text-slate-800">{selectedPass.fullName}</span></div>
                       <div className="flex justify-between border-b border-slate-100 pb-2"><span className="text-slate-400">ระดับชั้น</span><span className="font-semibold text-slate-800">{selectedPass.classGrade}</span></div>
                       <div className="flex justify-between border-b border-slate-100 pb-2"><span className="text-slate-400">ยานพาหนะ</span><span className="font-semibold text-slate-800">{selectedPass.brandModel} ({selectedPass.vehicleColor})</span></div>
+                      <div className="flex justify-between border-b border-slate-100 pb-2">
+                        <span className="text-slate-400">ใบขับขี่</span>
+                        <span className={`font-semibold ${selectedPass.hasLicense === true ? 'text-green-600' : selectedPass.hasLicense === false ? 'text-red-600' : 'text-slate-500'}`}>
+                          {selectedPass.hasLicense === true ? '✓ มีใบขับขี่' : selectedPass.hasLicense === false ? '✗ ไม่มีใบขับขี่' : 'ไม่ระบุ'}
+                        </span>
+                      </div>
                     </div>
                     <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-inner">
                       <QRCodeSVG value={selectedPass.plateNumber} size={120} level="H" includeMargin={true} />
