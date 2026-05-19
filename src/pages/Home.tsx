@@ -51,7 +51,7 @@ const Home = () => {
 
     const fetchFeatures = async () => {
       try {
-        const { data } = await supabase.from('feature_flags').select('*');
+        const { data } = await (supabase as any).from('feature_flags').select('*');
         if (data) {
           const featureMap = data.reduce((acc: any, curr: any) => {
             acc[curr.feature_key] = curr;

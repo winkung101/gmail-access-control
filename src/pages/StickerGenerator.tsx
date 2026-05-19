@@ -70,7 +70,7 @@ const StickerGenerator = () => {
   // 2. ดึงข้อมูล Supabase
   const fetchSupabaseData = useCallback(async () => {
     try {
-      const { data, error } = await supabase.from('motorcycles').select('*').order('created_at', { ascending: false });
+      const { data, error } = await (supabase as any).from('motorcycles').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
     } catch (error) {
