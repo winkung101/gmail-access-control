@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Bike, Users, Calendar, TrendingUp, PieChart as PieIcon, Loader2, BarChart2 } from 'lucide-react';
+import { ArrowLeft, Bike, Users, Calendar, TrendingUp, PieChart as PieIcon, Loader2, BarChart2, IdCard } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend, LabelList
@@ -19,6 +19,7 @@ const Dashboard = () => {
   const [classData, setClassData] = useState<any[]>([]);
   const [roomData, setRoomData] = useState<any[]>([]); // Data สำหรับรายห้อง
   const [brandData, setBrandData] = useState<any[]>([]);
+  const [licenseStats, setLicenseStats] = useState({ withLicense: 0, withoutLicense: 0, unknown: 0 });
 
   const GOOGLE_SHEET_ID = '1YqjDZXFLktWvwKg_2hY_kMGAhD69tmy6W4phpSfAMbM';
 
@@ -77,7 +78,7 @@ const Dashboard = () => {
   // 2. ดึงข้อมูล Supabase
   const fetchSupabaseData = useCallback(async () => {
     try {
-      const { data, error } = await (supabase as any).from('motorcycles').select('created_at, classroom, brand_model');
+      const { data, error } = await (supabase as any).from('motorcycles').select('created_at, classroom, brand_model, has_license');
       if (error) throw error;
       return data || [];
     } catch (error) {
@@ -188,6 +189,15 @@ const Dashboard = () => {
         const otherCount = sortedBrands.slice(5).reduce((sum, key) => sum + brandCount[key], 0);
         if (otherCount > 0) topBrands.push({ name: 'อื่นๆ', value: otherCount });
         setBrandData(topBrands);
+
+        // E. สถิติใบขับขี่ (เฉพาะข้อมูลจาก Supabase ที่มีฟิลด์นี้)
+        let withL = 0, withoutL = 0, unknownL = 0;
+        allData.forEach(item => {
+          if (item.has_license === true) withL++;
+          else if (item.has_license === false) withoutL++;
+          else unknownL++;
+        });
+        setLicenseStats({ withLicense: withL, withoutLicense: withoutL, unknown: unknownL });
       }
       
       setLoading(false);
@@ -256,6 +266,34 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* --- License Stats --- */}
+        <Card className="border-none shadow-md">
+          <CardHeader>
+            <CardTitle className="text-lg text-slate-700 flex items-center">
+              <IdCard className="mr-2 h-5 w-5 text-blue-600" /> สถิติใบขับขี่
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="p-4 rounded-lg bg-green-50 border border-green-100 text-center">
+                <p className="text-xs text-green-700 font-medium mb-1">มีใบขับขี่</p>
+                <p className="text-2xl font-bold text-green-600">{loading ? '...' : licenseStats.withLicense}</p>
+                <p className="text-[10px] text-slate-400 mt-1">คน</p>
+              </div>
+              <div className="p-4 rounded-lg bg-red-50 border border-red-100 text-center">
+                <p className="text-xs text-red-700 font-medium mb-1">ไม่มีใบขับขี่</p>
+                <p className="text-2xl font-bold text-red-600">{loading ? '...' : licenseStats.withoutLicense}</p>
+                <p className="text-[10px] text-slate-400 mt-1">คน</p>
+              </div>
+              <div className="p-4 rounded-lg bg-slate-50 border border-slate-100 text-center">
+                <p className="text-xs text-slate-600 font-medium mb-1">ไม่ระบุ</p>
+                <p className="text-2xl font-bold text-slate-500">{loading ? '...' : licenseStats.unknown}</p>
+                <p className="text-[10px] text-slate-400 mt-1">คน</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* --- Charts Section --- */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
